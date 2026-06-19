@@ -1,1040 +1,766 @@
+
 <!DOCTYPE html>
 <html lang="mn">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GTFS Schedule Viewer</title>
+<title>GTFS Viewer</title>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
-<script>window.JSZip || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"><\/script>')</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{width:100%;height:100%;font-family:'Inter','Segoe UI',Arial,sans-serif;overflow:hidden;background:#111}
-
-/* MAP */
+html,body{width:100%;height:100%;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;background:#111}
 #map{position:absolute;inset:0;z-index:1}
 
-/* SIDEBAR */
 .sidebar{
-  position:absolute;top:0;left:0;width:320px;height:100%;
-  background:#1a1a2e;color:#e8e8f0;
+  position:absolute;top:0;left:0;width:300px;height:100%;
+  background:#13131f;color:#e0e0f0;
   display:flex;flex-direction:column;
-  z-index:10;
-  box-shadow:2px 0 16px rgba(0,0,0,.5);
+  z-index:10;box-shadow:2px 0 12px rgba(0,0,0,.6);
 }
-
-/* HEADER */
 .sidebar-header{
-  padding:16px 16px 12px;
-  background:#12122a;
-  border-bottom:1px solid #2a2a4a;
-  flex-shrink:0;
+  padding:14px 16px 10px;background:#0d0d1a;
+  border-bottom:1px solid #222240;flex-shrink:0;
 }
-.import-btn{
-  width:100%;padding:10px;border-radius:8px;
-  border:1.5px dashed #4a4a8a;
-  background:#1e1e3a;color:#8888cc;
-  font-size:0.82rem;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;gap:8px;
+.app-title{font-size:.7rem;font-weight:700;letter-spacing:.12em;color:#4444aa;text-transform:uppercase;margin-bottom:10px}
+
+/* File import */
+.import-label{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 12px;border-radius:6px;
+  border:1.5px dashed #333360;background:#0d0d1a;
+  color:#6666bb;font-size:.8rem;cursor:pointer;
   transition:all .2s;
 }
-.import-btn:hover{border-color:#7777dd;color:#aaaaee;background:#252545}
-.import-btn input{display:none}
-.import-status{
-  margin-top:8px;font-size:0.75rem;color:#6666aa;
-  min-height:16px;transition:color .2s;
-}
-.import-status.ok{color:#4dbb8a}
-.import-status.err{color:#e05a5a}
-.import-status.loading{color:#7777dd}
+.import-label:hover{border-color:#6666cc;color:#9999ee;background:#111128}
+.import-label input{display:none}
+.status{font-size:.72rem;color:#44446a;margin-top:6px;min-height:15px;transition:color .2s}
+.status.ok{color:#3daa72}.status.err{color:#cc4444}.status.loading{color:#6666cc}
 
-/* ROUTE TYPES SECTION */
-.section{
-  padding:12px 16px 8px;
-  border-bottom:1px solid #232340;
-  flex-shrink:0;
+/* File checklist */
+.file-panel{
+  margin-top:8px;border-radius:6px;border:1px solid #222240;overflow:hidden;display:none;
 }
-.section-title{
-  font-size:0.68rem;font-weight:700;letter-spacing:.1em;
-  color:#5555aa;text-transform:uppercase;margin-bottom:10px;
+.file-row{
+  display:flex;align-items:flex-start;gap:8px;padding:6px 10px;
+  border-bottom:1px solid #1a1a30;cursor:pointer;
+  font-size:.76rem;transition:background .12s;
 }
-.type-row{
-  display:flex;align-items:center;gap:10px;
-  padding:4px 0;font-size:0.82rem;color:#ccccee;
-  cursor:pointer;
+.file-row:last-child{border:none}
+.file-row:hover{background:#1a1a2e}
+.file-row input{margin-top:2px;accent-color:#6666cc;flex-shrink:0}
+.file-row.req input{opacity:.4;cursor:not-allowed}
+.fname{font-weight:600;color:#aaaadd;font-family:monospace;font-size:.73rem}
+.fdesc{color:#44446a;font-size:.68rem;margin-top:1px}
+.fbadge{
+  font-size:.6rem;padding:1px 4px;border-radius:3px;margin-left:4px;
+  vertical-align:middle;
 }
-.type-row input[type=checkbox]{
-  accent-color:#7777dd;transform:scale(1.15);cursor:pointer;
-}
+.b-req{background:#0d2a1a;color:#3daa72}
+.b-opt{background:#1a1a0d;color:#aaaa33}
+.b-big{background:#1a0d0d;color:#aa5533}
 
-/* VISIBILITY */
-.vis-row{
-  display:flex;align-items:center;gap:10px;
-  font-size:0.82rem;color:#ccccee;cursor:pointer;
+.load-btn{
+  width:100%;margin-top:8px;padding:8px;border-radius:6px;
+  border:none;background:#3344bb;color:#fff;font-size:.8rem;
+  cursor:pointer;transition:background .15s;
 }
-.vis-row input[type=checkbox]{accent-color:#7777dd;transform:scale(1.15);cursor:pointer}
+.load-btn:hover{background:#5566dd}
+.load-btn:disabled{background:#1a1a30;color:#333360;cursor:not-allowed}
 
-/* SEARCH */
-.search-wrap{padding:10px 16px 6px;flex-shrink:0}
+/* Section */
+.sec{padding:10px 14px 6px;border-bottom:1px solid #1a1a30;flex-shrink:0}
+.sec-title{font-size:.64rem;font-weight:700;letter-spacing:.1em;color:#44448a;text-transform:uppercase;margin-bottom:8px}
+.type-row{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:.78rem;color:#bbbbdd;cursor:pointer}
+.type-row input{accent-color:#6666cc;transform:scale(1.1);cursor:pointer}
+.vis-row{display:flex;align-items:center;gap:8px;font-size:.78rem;color:#bbbbdd;cursor:pointer}
+.vis-row input{accent-color:#6666cc;transform:scale(1.1)}
+
+/* Route list */
+.search-wrap{padding:8px 14px 4px;flex-shrink:0}
 .search-input{
-  width:100%;padding:8px 10px;border-radius:6px;
-  border:1px solid #2a2a50;background:#12122a;
-  color:#e8e8f0;font-size:0.82rem;outline:none;
+  width:100%;padding:7px 10px;border-radius:5px;
+  border:1px solid #222240;background:#0d0d1a;
+  color:#e0e0f0;font-size:.78rem;outline:none;
   transition:border-color .2s;
 }
-.search-input:focus{border-color:#6666cc}
-.search-input::placeholder{color:#44446a}
-
-/* ROUTES LIST */
-.routes-header{
-  padding:8px 16px 4px;
-  font-size:0.68rem;font-weight:700;letter-spacing:.1em;
-  color:#5555aa;text-transform:uppercase;flex-shrink:0;
+.search-input:focus{border-color:#5555bb}
+.search-input::placeholder{color:#333360}
+.list-header{
+  padding:6px 14px 3px;
+  font-size:.64rem;font-weight:700;letter-spacing:.1em;
+  color:#44448a;text-transform:uppercase;flex-shrink:0;
+  display:flex;justify-content:space-between;align-items:center;
 }
-.route-count{
-  font-size:0.72rem;color:#44446a;font-weight:400;
-  text-transform:none;letter-spacing:0;margin-left:6px;
+.list-header span{font-size:.68rem;color:#333360;font-weight:400;text-transform:none;letter-spacing:0}
+.route-list{
+  flex:1;overflow-y:auto;padding:2px 0 10px;
+  scrollbar-width:thin;scrollbar-color:#222240 transparent;
 }
-.routes-list{
-  flex:1;overflow-y:auto;padding:4px 0 12px;
-  scrollbar-width:thin;scrollbar-color:#2a2a50 transparent;
-}
-.routes-list::-webkit-scrollbar{width:4px}
-.routes-list::-webkit-scrollbar-thumb{background:#2a2a50;border-radius:4px}
-.routes-list::-webkit-scrollbar-thumb:hover{background:#5555aa}
-
+.route-list::-webkit-scrollbar{width:3px}
+.route-list::-webkit-scrollbar-thumb{background:#222240;border-radius:3px}
 .route-item{
-  display:flex;align-items:center;gap:10px;
-  padding:8px 16px;cursor:pointer;
-  transition:background .15s;font-size:0.82rem;
+  display:flex;align-items:center;gap:9px;
+  padding:7px 14px;cursor:pointer;
+  transition:background .12s;font-size:.78rem;
   border-left:3px solid transparent;
 }
-.route-item:hover{background:#1e1e3a}
-.route-item.active{
-  background:#1e1e3a;
-  border-left-color:var(--rc,#7777dd);
-}
-.route-dot{
-  width:12px;height:12px;border-radius:50%;flex-shrink:0;
-  background:var(--rc,#7777dd);
-}
-.route-name{flex:1;color:#ccccee;line-height:1.3}
-.route-short{font-weight:700;color:#e8e8f0}
+.route-item:hover{background:#1a1a2e}
+.route-item.sel{background:#111128;border-left-color:var(--c,#6666cc)}
+.rdot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--c,#6666cc)}
+.rname{flex:1;color:#bbbbdd;line-height:1.3}
+.rshort{font-weight:700;color:#e0e0f0}
 
-/* DETAIL PANEL (slides in from bottom of sidebar) */
-.detail-panel{
-  position:absolute;bottom:0;left:0;width:320px;
-  background:#12122a;border-top:1px solid #2a2a4a;
-  padding:14px 16px;z-index:11;
-  transform:translateY(100%);transition:transform .3s ease;
-  max-height:50%;overflow-y:auto;
+/* Detail */
+.detail{
+  position:absolute;bottom:0;left:0;width:300px;
+  background:#0d0d1a;border-top:1px solid #222240;
+  padding:12px 14px;z-index:11;
+  transform:translateY(100%);transition:transform .25s;
+  max-height:45%;overflow-y:auto;
 }
-.detail-panel.open{transform:translateY(0)}
-.detail-title{font-size:0.9rem;font-weight:700;color:#e8e8f0;margin-bottom:4px}
-.detail-sub{font-size:0.78rem;color:#8888bb;margin-bottom:10px}
-.detail-back{
-  font-size:0.75rem;color:#6666cc;cursor:pointer;
-  margin-bottom:10px;display:inline-flex;align-items:center;gap:4px;
-}
-.detail-back:hover{color:#aaaaee}
-.detail-note{
-  font-size:0.72rem;color:#44446a;line-height:1.5;
-  border-top:1px solid #2a2a4a;padding-top:10px;margin-top:4px;
-}
+.detail.open{transform:translateY(0)}
+.detail-back{font-size:.72rem;color:#5555bb;cursor:pointer;margin-bottom:8px;display:inline-flex;align-items:center;gap:4px}
+.detail-back:hover{color:#8888ee}
+.detail-title{font-size:.88rem;font-weight:700;color:#e0e0f0;margin-bottom:3px}
+.detail-sub{font-size:.74rem;color:#6666aa;margin-bottom:8px}
+.detail-note{font-size:.68rem;color:#333360;line-height:1.5;border-top:1px solid #1a1a30;padding-top:8px}
 
-/* THEME TOGGLE */
+/* Controls */
 .theme-btn{
-  position:absolute;top:12px;right:12px;
-  width:36px;height:36px;border-radius:50%;
-  background:#1a1a2e;border:1px solid #2a2a4a;
+  position:absolute;top:10px;right:10px;
+  width:34px;height:34px;border-radius:50%;
+  background:#13131f;border:1px solid #222240;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;z-index:20;
-  box-shadow:0 2px 8px rgba(0,0,0,.4);
-  transition:background .15s;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
   outline:none;-webkit-tap-highlight-color:transparent;
+  transition:background .15s;
 }
-.theme-btn:hover{background:#252545}
-.theme-btn svg{width:18px;height:18px}
+.theme-btn:hover{background:#1a1a2e}
+.theme-btn svg{width:17px;height:17px}
+.credit{
+  position:absolute;bottom:6px;left:308px;
+  font-size:.65rem;color:#6666aa;
+  background:rgba(13,13,26,.75);padding:2px 7px;border-radius:3px;
+  z-index:9;pointer-events:none;white-space:nowrap;
+}
+.credit a{color:#5555bb;text-decoration:none}
 
-/* ZOOM CONTROLS */
-.maplibregl-ctrl-group{
-  background:#1a1a2e !important;
-  border:1px solid #2a2a4a !important;
-  border-radius:8px !important;
-}
-.maplibregl-ctrl-group button{
-  background:transparent !important;
-  color:#8888cc !important;
-}
-.maplibregl-ctrl-group button:hover{background:#252545 !important}
-.maplibregl-ctrl-group button span{filter:invert(60%) sepia(30%) saturate(300%) hue-rotate(200deg)}
-
-/* POPUP */
+/* Popup */
 .maplibregl-popup-content{
-  background:#1a1a2e !important;color:#e8e8f0 !important;
-  border-radius:8px !important;padding:10px 14px !important;
-  border:1px solid #2a2a4a;font-size:0.82rem;
-  box-shadow:0 4px 16px rgba(0,0,0,.5) !important;
+  background:#13131f!important;color:#e0e0f0!important;
+  border-radius:7px!important;padding:10px 13px!important;
+  border:1px solid #222240;font-size:.78rem;
+  box-shadow:0 4px 16px rgba(0,0,0,.6)!important;
 }
-.maplibregl-popup-tip{border-top-color:#1a1a2e !important;border-bottom-color:#1a1a2e !important}
-.maplibregl-popup-close-button{color:#6666aa !important;font-size:1.1rem}
-.maplibregl-popup-close-button:hover{color:#e05a5a !important;background:transparent !important}
-.popup-stop-name{font-weight:600;color:#e8e8f0;margin-bottom:2px}
-.popup-routes{font-size:0.75rem;color:#8888bb}
+.maplibregl-popup-tip{border-top-color:#13131f!important;border-bottom-color:#13131f!important}
+.maplibregl-popup-close-button{color:#5555aa!important;font-size:1rem}
+.maplibregl-popup-close-button:hover{color:#cc4444!important;background:transparent!important}
+.pop-title{font-weight:600;color:#e0e0f0;margin-bottom:3px}
+.pop-sub{font-size:.7rem;color:#6666aa}
 
-/* COPYRIGHT */
-/* FILE SELECT PANEL */
-.file-select-panel {
-  margin-top: 8px;
-  background: #111128;
-  border: 1px solid #2a2a4a;
-  border-radius: 6px;
-  overflow: hidden;
-  display: none;
-}
-.file-select-header {
-  padding: 7px 10px;
-  font-size: 0.68rem; font-weight: 700; letter-spacing: .08em;
-  color: #5555aa; text-transform: uppercase;
-  border-bottom: 1px solid #2a2a4a;
-  display: flex; justify-content: space-between; align-items: center;
-}
-.file-select-header span { color: #33336a; font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 0.7rem; }
-.file-row {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid #1a1a38;
-  cursor: pointer;
-  transition: background .12s;
-}
-.file-row:last-child { border-bottom: none; }
-.file-row:hover { background: #1a1a38; }
-.file-row input[type=checkbox] { accent-color: #7777dd; margin-top: 2px; flex-shrink: 0; cursor: pointer; }
-.file-row.required input { opacity: 0.4; cursor: not-allowed; }
-.file-info { flex: 1; }
-.file-name { font-size: 0.78rem; font-weight: 600; color: #aaaadd; font-family: 'Courier New', monospace; }
-.file-desc { font-size: 0.7rem; color: #55556a; margin-top: 1px; line-height: 1.35; }
-.file-badge {
-  font-size: 0.62rem; padding: 1px 5px; border-radius: 3px;
-  margin-left: 5px; vertical-align: middle;
-}
-.badge-req  { background: #1a3a2a; color: #4dbb8a; }
-.badge-opt  { background: #2a2a1a; color: #aaaa44; }
-.badge-big  { background: #2a1a1a; color: #bb6644; }
-
-.map-credit{
-  position:absolute;bottom:8px;left:328px;
-  font-size:0.68rem;color:#8888bb;
-  background:rgba(18,18,42,.7);padding:3px 8px;border-radius:4px;
-  z-index:9;pointer-events:none;
-}
-
-/* LOADING OVERLAY */
-#loading{
-  position:absolute;inset:0;background:rgba(10,10,20,.85);
+#overlay{
+  position:absolute;inset:0;background:rgba(0,0,10,.82);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  z-index:100;gap:14px;
-  font-size:0.85rem;color:#8888cc;
+  z-index:100;gap:12px;font-size:.8rem;color:#6666aa;
 }
-#loading.hidden{display:none}
-.spinner{
-  width:36px;height:36px;border:3px solid #2a2a4a;
-  border-top-color:#7777dd;border-radius:50%;
-  animation:spin .8s linear infinite;
+#overlay.hidden{display:none}
+.spin{
+  width:32px;height:32px;border:2.5px solid #1a1a30;
+  border-top-color:#5566dd;border-radius:50%;
+  animation:spin .7s linear infinite;
 }
 @keyframes spin{to{transform:rotate(360deg)}}
 
-@media(max-width:600px){
-  .sidebar{width:100%;height:50%;top:auto;bottom:0;box-shadow:0 -4px 16px rgba(0,0,0,.5)}
-  .detail-panel{width:100%}
-  /* FILE SELECT PANEL */
-.file-select-panel {
-  margin-top: 8px;
-  background: #111128;
-  border: 1px solid #2a2a4a;
-  border-radius: 6px;
-  overflow: hidden;
-  display: none;
+.maplibregl-ctrl-group{
+  background:#13131f!important;border:1px solid #222240!important;border-radius:7px!important;
 }
-.file-select-header {
-  padding: 7px 10px;
-  font-size: 0.68rem; font-weight: 700; letter-spacing: .08em;
-  color: #5555aa; text-transform: uppercase;
-  border-bottom: 1px solid #2a2a4a;
-  display: flex; justify-content: space-between; align-items: center;
-}
-.file-select-header span { color: #33336a; font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 0.7rem; }
-.file-row {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid #1a1a38;
-  cursor: pointer;
-  transition: background .12s;
-}
-.file-row:last-child { border-bottom: none; }
-.file-row:hover { background: #1a1a38; }
-.file-row input[type=checkbox] { accent-color: #7777dd; margin-top: 2px; flex-shrink: 0; cursor: pointer; }
-.file-row.required input { opacity: 0.4; cursor: not-allowed; }
-.file-info { flex: 1; }
-.file-name { font-size: 0.78rem; font-weight: 600; color: #aaaadd; font-family: 'Courier New', monospace; }
-.file-desc { font-size: 0.7rem; color: #55556a; margin-top: 1px; line-height: 1.35; }
-.file-badge {
-  font-size: 0.62rem; padding: 1px 5px; border-radius: 3px;
-  margin-left: 5px; vertical-align: middle;
-}
-.badge-req  { background: #1a3a2a; color: #4dbb8a; }
-.badge-opt  { background: #2a2a1a; color: #aaaa44; }
-.badge-big  { background: #2a1a1a; color: #bb6644; }
-
-.load-now-btn {
-  width: 100%; margin-top: 8px; padding: 8px;
-  border-radius: 6px; border: none;
-  background: #5555cc; color: #fff;
-  font-size: 0.82rem; cursor: pointer;
-  transition: background .15s;
-}
-.load-now-btn:hover { background: #7777dd; }
-.load-now-btn:disabled { background: #2a2a4a; color: #44446a; cursor: not-allowed; }
-
-.map-credit{left:8px;bottom:52%}
-  .theme-btn{top:auto;bottom:calc(50% + 10px)}
-}
+.maplibregl-ctrl-group button{background:transparent!important}
+.maplibregl-ctrl-group button span{filter:invert(50%) sepia(30%) saturate(200%) hue-rotate(210deg)}
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<div class="sidebar" id="sidebar">
-  <!-- IMPORT -->
+<div class="sidebar">
   <div class="sidebar-header">
-    <label class="import-btn">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <div class="app-title">GTFS Schedule Viewer</div>
+    <label class="import-label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-        <polyline points="17 8 12 3 7 8"/>
-        <line x1="12" y1="3" x2="12" y2="15"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
       </svg>
-      GTFS Schedule (.zip) импортлох
-      <input type="file" id="gtfs-file" accept=".zip">
+      GTFS .zip импортлох
+      <input type="file" id="file-in" accept=".zip">
     </label>
-    <div class="import-status" id="import-status">GTFS zip файл сонгоно уу</div>
-  </div>
+    <div class="status" id="status">Файл сонгоно уу</div>
 
-  <!-- FILE SELECT PANEL -->
-  <div class="file-select-panel" id="file-select-panel">
-    <div class="file-select-header">
-      Ачаалах файлууд
-      <span>✓ = сонгосон</span>
+    <div class="file-panel" id="file-panel">
+      <label class="file-row req">
+        <input type="checkbox" checked disabled>
+        <div><div class="fname">stops.txt <span class="fbadge b-req">Заавал</span></div>
+        <div class="fdesc">Зогсоолын нэр, координат</div></div>
+      </label>
+      <label class="file-row req">
+        <input type="checkbox" checked disabled>
+        <div><div class="fname">routes.txt <span class="fbadge b-req">Заавал</span></div>
+        <div class="fdesc">Маршрутын нэр, өнгө</div></div>
+      </label>
+      <label class="file-row req">
+        <input type="checkbox" checked disabled>
+        <div><div class="fname">trips.txt <span class="fbadge b-req">Заавал</span></div>
+        <div class="fdesc">Маршрут ↔ shape холбоос</div></div>
+      </label>
+      <label class="file-row">
+        <input type="checkbox" checked id="cb-shapes">
+        <div><div class="fname">shapes.txt <span class="fbadge b-opt">Сонголттой</span></div>
+        <div class="fdesc">Замын координатууд</div></div>
+      </label>
+      <label class="file-row">
+        <input type="checkbox" id="cb-stoptimes">
+        <div><div class="fname">stop_times.txt <span class="fbadge b-big">Том файл</span></div>
+        <div class="fdesc">Маршрут ↔ зогсоол, цагийн хуваарь</div></div>
+      </label>
+      <button class="load-btn" id="load-btn" disabled>Файл сонгоно уу</button>
     </div>
-    <label class="file-row required">
-      <input type="checkbox" checked disabled data-file="stops.txt">
-      <div class="file-info">
-        <div class="file-name">stops.txt <span class="file-badge badge-req">Заавал</span></div>
-        <div class="file-desc">Зогсоолын нэр, координат</div>
-      </div>
-    </label>
-    <label class="file-row required">
-      <input type="checkbox" checked disabled data-file="routes.txt">
-      <div class="file-info">
-        <div class="file-name">routes.txt <span class="file-badge badge-req">Заавал</span></div>
-        <div class="file-desc">Маршрутын нэр, дугаар, өнгө</div>
-      </div>
-    </label>
-    <label class="file-row required">
-      <input type="checkbox" checked disabled data-file="trips.txt">
-      <div class="file-info">
-        <div class="file-name">trips.txt <span class="file-badge badge-req">Заавал</span></div>
-        <div class="file-desc">Маршрут ↔ shape холбоос</div>
-      </div>
-    </label>
-    <label class="file-row">
-      <input type="checkbox" checked data-file="shapes.txt">
-      <div class="file-info">
-        <div class="file-name">shapes.txt <span class="file-badge badge-opt">Сонголттой</span></div>
-        <div class="file-desc">Замын координатууд (зураас)</div>
-      </div>
-    </label>
-    <label class="file-row">
-      <input type="checkbox" data-file="stop_times.txt">
-      <div class="file-info">
-        <div class="file-name">stop_times.txt <span class="file-badge badge-big">Том файл</span></div>
-        <div class="file-desc">Зогсоол ↔ маршрут холбоос, цагийн хуваарь</div>
-      </div>
-    </label>
-    <button class="load-now-btn" id="load-now-btn" disabled>ZIP сонгоно уу</button>
   </div>
 
-  <!-- ROUTE TYPES -->
-  <div class="section" id="types-section" style="display:none">
-    <div class="section-title">Route Types</div>
+  <div class="sec" id="sec-types" style="display:none">
+    <div class="sec-title">Route Types</div>
     <div id="type-list"></div>
   </div>
 
-  <!-- VISIBILITY -->
-  <div class="section" id="vis-section" style="display:none">
-    <div class="section-title">Visibility</div>
+  <div class="sec" id="sec-vis" style="display:none">
+    <div class="sec-title">Visibility</div>
     <label class="vis-row">
       <input type="checkbox" id="hide-stops"> Hide Stops
     </label>
   </div>
 
-  <!-- ROUTES -->
   <div class="search-wrap" id="search-wrap" style="display:none">
-    <input class="search-input" id="route-search" placeholder="Чиглэл хайх...">
+    <input class="search-input" id="search" placeholder="Чиглэл хайх...">
   </div>
-  <div class="routes-header" id="routes-header" style="display:none">
-    Routes <span class="route-count" id="route-count"></span>
+  <div class="list-header" id="list-header" style="display:none">
+    Routes <span id="route-count"></span>
   </div>
-  <div class="routes-list" id="routes-list"></div>
+  <div class="route-list" id="route-list"></div>
 </div>
 
-<!-- DETAIL PANEL -->
-<div class="detail-panel" id="detail-panel">
-  <div class="detail-back" id="detail-back">← Back To Map</div>
+<div class="detail" id="detail">
+  <div class="detail-back" id="detail-back">← Буцах</div>
   <div class="detail-title" id="detail-title"></div>
   <div class="detail-sub" id="detail-sub"></div>
   <div class="detail-note">
-    The visualization reflects data directly from the GTFS feed. Route paths, stops, colors, and labels are all derived from the feed files (routes.txt, trips.txt, stop_times.txt, stops.txt, and shapes.txt where it's defined). If a route doesn't specify a color, it appears in black. When multiple shapes exist for different trips on the same route, they're combined into one for display.
+    Дүрслэл нь GTFS feed-ийн өгөгдлөөс шууд үүсгэгдэнэ. Маршрутын зам, зогсоол, өнгө нь routes.txt, trips.txt, stops.txt, shapes.txt файлуудаас ирнэ.
   </div>
 </div>
 
-<!-- THEME -->
-<button class="theme-btn" id="theme-btn" title="Өдөр/Шөнийн горим">
+<button class="theme-btn" id="theme-btn">
   <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"></svg>
 </button>
 
-<div class="map-credit">
-  <a href="https://maplibre.org/" target="_blank" style="color:#7777dd;text-decoration:none">MapLibre</a>
-  | © <a href="https://www.openstreetmap.org/copyright" target="_blank" style="color:#7777dd;text-decoration:none">OpenStreetMap</a> contributors
+<div class="credit">
+  <a href="https://maplibre.org" target="_blank">MapLibre</a> |
+  © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>
 </div>
 
-<div id="loading" class="hidden">
-  <div class="spinner"></div>
-  <div id="loading-msg">GTFS боловсруулж байна...</div>
+<div id="overlay" class="hidden">
+  <div class="spin"></div>
+  <div id="overlay-msg">Боловсруулж байна...</div>
 </div>
 
 <script>
-// ═══════════════════════════════════════════════
-//  THEME
-// ═══════════════════════════════════════════════
+// ═══════════════════════════
+//  CONSTANTS
+// ═══════════════════════════
+const DARK  = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+const LIGHT = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+const TYPE_NAMES = {0:'Tram',1:'Subway',2:'Rail',3:'Bus',4:'Ferry',5:'Cable Tram',6:'Aerial Lift',7:'Funicular',11:'Trolleybus',12:'Monorail'};
+
+const EMPTY_FC = {type:'FeatureCollection',features:[]};
+
+// ═══════════════════════════
+//  STATE
+// ═══════════════════════════
 let isDark = true;
-const DARK_STYLE  = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
-const LIGHT_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+let zip = null;
+let routes = [];       // processed route objects
+let allTypes = [];
+let typeOn = {};       // routeType → bool
+let stopsOn = true;
+let selRoute = null;
+let filterText = '';
 
+// ═══════════════════════════
+//  MAP INIT — layer нэмэх нь map.on('load') доторл хийнэ
+// ═══════════════════════════
 const map = new maplibregl.Map({
-  container: 'map',
-  style: DARK_STYLE,
-  center: [106.9176, 47.9188],
-  zoom: 12,
-  attributionControl: false
+  container:'map', style:DARK,
+  center:[0,30], zoom:2,
+  attributionControl:false
 });
-map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+map.addControl(new maplibregl.NavigationControl(),'bottom-right');
 
-const themeBtn  = document.getElementById('theme-btn');
-const themeIcon = document.getElementById('theme-icon');
-
-function setThemeIcon(dark) {
-  if (dark) {
-    themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-    themeIcon.setAttribute('stroke','#f59e0b');
-  } else {
-    themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z"/>';
-    themeIcon.setAttribute('stroke','#6366f1');
-  }
-}
-setThemeIcon(true);
-
-themeBtn.addEventListener('click', () => {
-  isDark = !isDark;
-  map.setStyle(isDark ? DARK_STYLE : LIGHT_STYLE);
-  map.once('styledata', () => {
-    if (gtfsLoaded) redrawAllLayers();
-    setTimeout(dimLabels, 200);
+// Map load нэг л удаа — source+layer бэлдэнэ
+map.on('load', () => {
+  // Routes source+layer
+  map.addSource('routes', {type:'geojson', data:EMPTY_FC});
+  map.addLayer({
+    id:'routes-bg', type:'line', source:'routes',
+    filter:['all',['==',['get','vis'],1],['==',['get','act'],0]],
+    paint:{
+      'line-color':['get','color'],
+      'line-width':['interpolate',['linear'],['zoom'],8,1,14,3],
+      'line-opacity':0.45
+    }
   });
-  setThemeIcon(isDark);
+  map.addLayer({
+    id:'routes-sel', type:'line', source:'routes',
+    filter:['all',['==',['get','vis'],1],['==',['get','act'],1]],
+    paint:{
+      'line-color':['get','color'],
+      'line-width':['interpolate',['linear'],['zoom'],8,2.5,14,6],
+      'line-opacity':0.95
+    }
+  });
+
+  // Stops source+layer
+  map.addSource('stops', {type:'geojson', data:EMPTY_FC});
+  map.addLayer({
+    id:'stops', type:'circle', source:'stops',
+    layout:{visibility:'visible'},
+    paint:{
+      'circle-radius':['interpolate',['linear'],['zoom'],9,1,13,2.5,18,5],
+      'circle-color':'#38bdf8',
+      'circle-opacity':0.9
+    }
+  });
+
+  // Stops click popup
+  map.on('click','stops', e=>{
+    const p = e.features[0].properties;
+    new maplibregl.Popup({closeButton:true,maxWidth:'240px'})
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pop-title">${p.name||'Нэргүй'}</div><div class="pop-sub">${p.routes||''}</div>`)
+      .addTo(map);
+  });
+
+  // Routes click popup
+  ['routes-bg','routes-sel'].forEach(lid=>{
+    map.on('click', lid, e=>{
+      const p = e.features[0].properties;
+      new maplibregl.Popup({closeButton:true,maxWidth:'240px'})
+        .setLngLat(e.lngLat)
+        .setHTML(`<div class="pop-title" style="display:flex;align-items:center;gap:7px">
+          <span style="width:11px;height:11px;border-radius:50%;background:${p.color};display:inline-block;flex-shrink:0"></span>Route</div>
+          <div class="pop-sub" style="margin-top:4px">${p.short?'<strong style="color:#e0e0f0">'+p.short+'</strong> · ':''} ${p.longname||''}</div>`)
+        .addTo(map);
+    });
+    map.on('mouseenter',lid,()=>{map.getCanvas().style.cursor='pointer'});
+    map.on('mouseleave',lid,()=>{map.getCanvas().style.cursor=''});
+  });
+  map.on('mouseenter','stops',()=>{map.getCanvas().style.cursor='pointer'});
+  map.on('mouseleave','stops',()=>{map.getCanvas().style.cursor=''});
+
+  // GTFS ачааллагдсан бол шинэчлэх
+  if(routes.length) renderMap();
 });
 
-// ═══════════════════════════════════════════════
-//  GTFS STATE
-// ═══════════════════════════════════════════════
-let gtfsLoaded   = false;
-let gtfsData     = {};       // { stops, routes, trips, shapes, stopTimes }
-let routeMeta    = [];       // processed route objects
-let activeRoutes = new Set();
-let selectedRoute= null;
-let stopsVisible = true;
-let typeFilters  = {};       // routeType → bool
-let allTypes     = [];
+// Style солигдох үед layer-ууд алга болдог — дахин нэмэх
+map.on('style.load', ()=>{
+  // Давхар нэмэхгүйн тулд шалгана
+  if(map.getSource('routes')) return;
+  // Дахин бүх layer нэмэх
+  map.addSource('routes',{type:'geojson',data:EMPTY_FC});
+  map.addLayer({id:'routes-bg',type:'line',source:'routes',
+    filter:['all',['==',['get','vis'],1],['==',['get','act'],0]],
+    paint:{'line-color':['get','color'],
+      'line-width':['interpolate',['linear'],['zoom'],8,1,14,3],'line-opacity':0.45}});
+  map.addLayer({id:'routes-sel',type:'line',source:'routes',
+    filter:['all',['==',['get','vis'],1],['==',['get','act'],1]],
+    paint:{'line-color':['get','color'],
+      'line-width':['interpolate',['linear'],['zoom'],8,2.5,14,6],'line-opacity':0.95}});
+  map.addSource('stops',{type:'geojson',data:EMPTY_FC});
+  map.addLayer({id:'stops',type:'circle',source:'stops',
+    layout:{visibility:stopsOn?'visible':'none'},
+    paint:{'circle-radius':['interpolate',['linear'],['zoom'],9,1,13,2.5,18,5],
+      'circle-color':'#38bdf8','circle-opacity':0.9}});
 
-const ROUTE_TYPE_NAMES = {
-  0:'Tram/Streetcar',1:'Subway/Metro',2:'Rail',3:'Bus',
-  4:'Ferry',5:'Cable Tram',6:'Aerial Lift',7:'Funicular',
-  11:'Trolleybus',12:'Monorail'
-};
-
-// ═══════════════════════════════════════════════
-//  FILE INPUT
-// ═══════════════════════════════════════════════
-let pendingZip = null;
-
-// Файл сонгогдоход panel харуулна, гэхдээ уншихгүй
-document.getElementById('gtfs-file').addEventListener('change', async e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  setStatus('Ачаалах файлуудаа сонгоод товчийг дарна уу', 'loading');
-  showLoading('ZIP задлаж байна...');
-  try {
-    pendingZip = await JSZip.loadAsync(file);
-    hideLoading();
-    // ZIP дотор байгаа файлуудыг шалгаж checkbox-уудыг идэвхжүүлэх
-    const panel = document.getElementById('file-select-panel');
-    panel.style.display = 'block';
-    panel.querySelectorAll('input[type=checkbox][data-file]').forEach(cb => {
-      const fname = cb.dataset.file;
-      const inZip = !!pendingZip.file(fname);
-      if (!cb.disabled) {
-        cb.disabled = !inZip;
-        if (!inZip) { cb.checked = false; cb.closest('.file-row').style.opacity = '0.35'; }
-        else { cb.closest('.file-row').style.opacity = '1'; }
-      }
+  map.on('click','stops',e=>{
+    const p=e.features[0].properties;
+    new maplibregl.Popup({closeButton:true,maxWidth:'240px'})
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pop-title">${p.name||'Нэргүй'}</div><div class="pop-sub">${p.routes||''}</div>`)
+      .addTo(map);
+  });
+  ['routes-bg','routes-sel'].forEach(lid=>{
+    map.on('click',lid,e=>{
+      const p=e.features[0].properties;
+      new maplibregl.Popup({closeButton:true,maxWidth:'240px'})
+        .setLngLat(e.lngLat)
+        .setHTML(`<div class="pop-title" style="display:flex;align-items:center;gap:7px">
+          <span style="width:11px;height:11px;border-radius:50%;background:${p.color};display:inline-block;flex-shrink:0"></span>Route</div>
+          <div class="pop-sub" style="margin-top:4px">${p.short?'<strong style="color:#e0e0f0">'+p.short+'</strong> · ':''} ${p.longname||''}</div>`)
+        .addTo(map);
     });
-    const btn = document.getElementById('load-now-btn');
+    map.on('mouseenter',lid,()=>{map.getCanvas().style.cursor='pointer'});
+    map.on('mouseleave',lid,()=>{map.getCanvas().style.cursor=''});
+  });
+  map.on('mouseenter','stops',()=>{map.getCanvas().style.cursor='pointer'});
+  map.on('mouseleave','stops',()=>{map.getCanvas().style.cursor=''});
+
+  if(routes.length) renderMap();
+});
+
+// ═══════════════════════════
+//  THEME
+// ═══════════════════════════
+const themeBtn = document.getElementById('theme-btn');
+const themeIcon= document.getElementById('theme-icon');
+function setIcon(dark){
+  themeIcon.setAttribute('stroke', dark?'#f59e0b':'#818cf8');
+  themeIcon.innerHTML = dark
+    ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
+    : '<path d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z"/>';
+}
+setIcon(true);
+themeBtn.addEventListener('click',()=>{
+  isDark=!isDark;
+  map.setStyle(isDark?DARK:LIGHT);
+  setIcon(isDark);
+});
+
+// ═══════════════════════════
+//  FILE INPUT
+// ═══════════════════════════
+document.getElementById('file-in').addEventListener('change', async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  setStatus('ZIP задлаж байна...','loading');
+  showOverlay('ZIP задлаж байна...');
+  try {
+    zip = await JSZip.loadAsync(f);
+    hideOverlay();
+
+    // ZIP дотор байгаа файлуудыг шалгах
+    ['shapes.txt','stop_times.txt'].forEach(name=>{
+      const id = name==='shapes.txt'?'cb-shapes':'cb-stoptimes';
+      const cb = document.getElementById(id);
+      const exists = !!zip.file(name);
+      cb.disabled = !exists;
+      if(!exists) cb.checked = false;
+      cb.closest('.file-row').style.opacity = exists?'1':'0.4';
+    });
+
+    const btn = document.getElementById('load-btn');
     btn.disabled = false;
     btn.textContent = '▶ Ачаалах';
-    setStatus(`ZIP бэлэн — файл сонгоод ачаална уу`, '');
-  } catch(err) {
-    hideLoading();
-    pendingZip = null;
-    setStatus('❌ ZIP уншиж чадсангүй: ' + err.message, 'err');
+    document.getElementById('file-panel').style.display = 'block';
+    setStatus(`ZIP бэлэн — файлуудаа сонгоод ачаална уу`,'');
+  } catch(err){
+    hideOverlay(); zip=null;
+    setStatus('❌ ZIP уншиж чадсангүй','err');
   }
 });
 
-document.getElementById('load-now-btn').addEventListener('click', async () => {
-  if (!pendingZip) return;
-  const btn = document.getElementById('load-now-btn');
-  btn.disabled = true;
-  btn.textContent = 'Ачааллаж байна...';
-  setStatus('Уншиж байна...', 'loading');
-  showLoading('Файлуудыг уншиж байна...');
+document.getElementById('load-btn').addEventListener('click', async ()=>{
+  if(!zip) return;
+  const btn = document.getElementById('load-btn');
+  btn.disabled=true; btn.textContent='Ачааллаж байна...';
+  showOverlay('Файлуудыг уншиж байна...');
+
   try {
-    gtfsData = {};
-    const checks = document.querySelectorAll('#file-select-panel input[data-file]');
-    for (const cb of checks) {
-      if (!cb.checked) continue;
-      const fname = cb.dataset.file;
-      const f = pendingZip.file(fname);
-      if (!f) continue;
-      setLoadMsg(`${fname} уншиж байна...`);
-      await new Promise(r => setTimeout(r, 10));
-      try {
-        gtfsData[fname.replace('.txt','')] = parseCsv(await f.async('string'));
-      } catch(e) {
-        console.warn(fname + ' уншиж чадсангүй:', e);
-      }
+    // ── CSV уншина ──
+    const read = async name => {
+      const f = zip.file(name);
+      return f ? parseCsv(await f.async('string')) : null;
+    };
+
+    setOverlayMsg('stops.txt...');
+    const stops = await read('stops.txt');
+    setOverlayMsg('routes.txt...');
+    const rawRoutes = await read('routes.txt');
+    setOverlayMsg('trips.txt...');
+    const trips = await read('trips.txt');
+
+    let shapes = null, stopTimes = null;
+    if(document.getElementById('cb-shapes').checked){
+      setOverlayMsg('shapes.txt...'); shapes = await read('shapes.txt');
     }
-    if (!gtfsData.stops || !gtfsData.routes) throw new Error('stops.txt эсвэл routes.txt олдсонгүй');
-    setLoadMsg('Маршрутуудыг боловсруулж байна...');
-    await new Promise(r => setTimeout(r, 30));
-    processGTFS();
-    hideLoading();
-    setStatus(`✅ ${routeMeta.length} маршрут, ${gtfsData.stops.length} зогсоол`, 'ok');
-    gtfsLoaded = true;
-    btn.textContent = '✅ Ачааллагдлаа';
-  } catch(err) {
-    hideLoading();
-    setStatus('❌ ' + err.message, 'err');
-    btn.disabled = false;
-    btn.textContent = '▶ Дахин оролдох';
-    console.error(err);
+    if(document.getElementById('cb-stoptimes').checked){
+      setOverlayMsg('stop_times.txt (том файл)...'); stopTimes = await read('stop_times.txt');
+    }
+
+    if(!stops||!rawRoutes||!trips) throw new Error('stops/routes/trips.txt олдсонгүй');
+
+    setOverlayMsg('Боловсруулж байна...');
+    await tick();
+    process({stops, rawRoutes, trips, shapes, stopTimes});
+    hideOverlay();
+    btn.textContent='✅ Ачааллагдлаа';
+    setStatus(`✅ ${routes.length} маршрут, ${stops.length} зогсоол`,'ok');
+  } catch(err){
+    hideOverlay();
+    setStatus('❌ '+err.message,'err');
+    btn.disabled=false; btn.textContent='▶ Дахин оролдох';
   }
 });
 
-// ═══════════════════════════════════════════════
+// ═══════════════════════════
 //  CSV PARSER
-// ═══════════════════════════════════════════════
-function parseCsv(text) {
-  const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l => l.trim());
-  if (lines.length < 2) return [];
-  const headers = splitCsvLine(lines[0]);
-  return lines.slice(1).map(line => {
-    const vals = splitCsvLine(line);
-    const obj = {};
-    headers.forEach((h,i) => { obj[h.trim()] = (vals[i]||'').trim(); });
-    return obj;
+// ═══════════════════════════
+function parseCsv(txt){
+  const lines = txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l=>l.trim());
+  if(lines.length<2) return [];
+  const headers = splitLine(lines[0]);
+  return lines.slice(1).map(l=>{
+    const v=splitLine(l), o={};
+    headers.forEach((h,i)=>{ o[h.trim()]=(v[i]||'').trim(); });
+    return o;
   });
 }
-function splitCsvLine(line) {
-  const result = []; let cur = ''; let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (c === '"') { inQ = !inQ; }
-    else if (c === ',' && !inQ) { result.push(cur); cur = ''; }
-    else { cur += c; }
+function splitLine(l){
+  const r=[]; let cur='',q=false;
+  for(const c of l){
+    if(c==='"'){q=!q}
+    else if(c===','&&!q){r.push(cur);cur=''}
+    else cur+=c;
   }
-  result.push(cur);
-  return result;
+  r.push(cur); return r;
 }
+const tick = ()=>new Promise(r=>setTimeout(r,10));
 
-// ═══════════════════════════════════════════════
+// ═══════════════════════════
 //  PROCESS GTFS
-// ═══════════════════════════════════════════════
-function processGTFS() {
-  // Зогсоол map
-  const stopsMap = {};
-  (gtfsData.stops||[]).forEach(s => { stopsMap[s.stop_id] = s; });
+// ═══════════════════════════
+function process({stops, rawRoutes, trips, shapes, stopTimes}){
+  // Stop map
+  const stopMap={};
+  stops.forEach(s=>{ stopMap[s.stop_id]=s; });
 
-  // Trip → shape map
-  const tripShapeMap = {};
-  const tripRouteMap = {};
-  (gtfsData.trips||[]).forEach(t => {
-    tripRouteMap[t.trip_id] = t.route_id;
-    if (t.shape_id) tripShapeMap[t.trip_id] = t.shape_id;
+  // Trip → route, shape
+  const tripRoute={}, tripShape={};
+  trips.forEach(t=>{
+    tripRoute[t.trip_id]=t.route_id;
+    if(t.shape_id) tripShape[t.trip_id]=t.shape_id;
   });
 
-  // Shape → coords map
-  const shapeMap = {};
-  if (gtfsData.shapes) {
-    gtfsData.shapes.forEach(s => {
-      if (!shapeMap[s.shape_id]) shapeMap[s.shape_id] = [];
-      shapeMap[s.shape_id].push({
-        seq: parseInt(s.shape_pt_sequence)||0,
-        lat: parseFloat(s.shape_pt_lat),
-        lng: parseFloat(s.shape_pt_lon)
-      });
+  // Shape → sorted coords
+  const shapeCoords={};
+  if(shapes){
+    shapes.forEach(s=>{
+      if(!shapeCoords[s.shape_id]) shapeCoords[s.shape_id]=[];
+      shapeCoords[s.shape_id].push([
+        parseFloat(s.shape_pt_lon),
+        parseFloat(s.shape_pt_lat),
+        parseInt(s.shape_pt_sequence)||0
+      ]);
     });
-    Object.keys(shapeMap).forEach(id => {
-      shapeMap[id].sort((a,b) => a.seq - b.seq);
+    Object.keys(shapeCoords).forEach(id=>{
+      shapeCoords[id].sort((a,b)=>a[2]-b[2]);
+      shapeCoords[id]=shapeCoords[id].map(p=>[p[0],p[1]]);
     });
   }
 
-  // Route → stops (stop_times байвал тэрнээс, байхгүй бол зогсоол бүгдийг маршрут бүрт харуулна)
-  const routeStopsMap = {};
-  if (gtfsData.stop_times && gtfsData.stop_times.length > 0) {
-    gtfsData.stop_times.forEach(st => {
-      const rid = tripRouteMap[st.trip_id];
-      if (!rid) return;
-      if (!routeStopsMap[rid]) routeStopsMap[rid] = new Set();
-      routeStopsMap[rid].add(st.stop_id);
-    });
-  }
-  // stop_times байхгүй бол: зогсоолуудыг stops.txt-аас шууд авна (route-тай холбохгүй)
-  const allStopsMode = !gtfsData.stop_times || gtfsData.stop_times.length === 0;
-
-  // Route → shapes (trip дамжаад)
-  const routeShapesMap = {};
-  Object.entries(tripShapeMap).forEach(([tripId, shapeId]) => {
-    const rid = tripRouteMap[tripId];
-    if (!rid) return;
-    if (!routeShapesMap[rid]) routeShapesMap[rid] = new Set();
-    routeShapesMap[rid].add(shapeId);
+  // Route → shapes
+  const routeShapes={};
+  Object.entries(tripShape).forEach(([tid,sid])=>{
+    const rid=tripRoute[tid]; if(!rid) return;
+    if(!routeShapes[rid]) routeShapes[rid]=new Set();
+    routeShapes[rid].add(sid);
   });
 
-  // Route → stop_sequence — stop_times байвал, shapes байхгүй route-д ашиглах
-  const routeStopSeqMap = {};
-  if (gtfsData.stop_times && gtfsData.stop_times.length > 0) {
-    const tripStops = {};
-    gtfsData.stop_times.forEach(st => {
-      if (!tripStops[st.trip_id]) tripStops[st.trip_id] = [];
-      tripStops[st.trip_id].push({seq: parseInt(st.stop_sequence)||0, stop_id: st.stop_id});
-    });
-    Object.entries(tripStops).forEach(([tripId, stops]) => {
-      const rid = tripRouteMap[tripId];
-      if (!rid) return;
-      if (routeShapesMap[rid] && routeShapesMap[rid].size > 0) return;
-      stops.sort((a,b) => a.seq - b.seq);
-      if (!routeStopSeqMap[rid] || stops.length > routeStopSeqMap[rid].length) {
-        routeStopSeqMap[rid] = stops.map(s => s.stop_id);
-      }
+  // Route → stops (stop_times байвал)
+  const routeStops={};
+  if(stopTimes){
+    stopTimes.forEach(st=>{
+      const rid=tripRoute[st.trip_id]; if(!rid) return;
+      if(!routeStops[rid]) routeStops[rid]=new Set();
+      routeStops[rid].add(st.stop_id);
     });
   }
 
-  // Build routeMeta
-  routeMeta = (gtfsData.routes||[]).map(r => {
-    const color = r.route_color ? '#' + r.route_color : null;
-    const textColor = r.route_text_color ? '#' + r.route_text_color : '#ffffff';
-    const type = parseInt(r.route_type)||3;
-    const name = r.route_long_name
-      ? (r.route_short_name ? `${r.route_short_name} - ${r.route_long_name}` : r.route_long_name)
-      : r.route_short_name || r.route_id;
+  // Build routes
+  routes = rawRoutes.map(r=>{
+    const color = r.route_color?'#'+r.route_color:'#5566cc';
+    const type  = parseInt(r.route_type)||3;
+    const short = r.route_short_name||'';
+    const longname = r.route_long_name||'';
+    const name  = longname?(short?`${short} - ${longname}`:longname):(short||r.route_id);
 
-    // GeoJSON coordinates — MultiLineString (shape бүр тусдаа шугам)
-    let coordLines = []; // [[lng,lat], ...] массивуудын массив
-    const shapeIds = routeShapesMap[r.route_id];
-    if (shapeIds && shapeIds.size > 0) {
-      shapeIds.forEach(sid => {
-        const pts = shapeMap[sid]||[];
-        if (pts.length > 1) {
-          coordLines.push(pts.map(p => [p.lng, p.lat]));
-        }
+    // MultiLineString — shape бүр тусдаа segment
+    const coordLines=[];
+    const sids = routeShapes[r.route_id];
+    if(sids && sids.size>0){
+      sids.forEach(sid=>{
+        const pts=shapeCoords[sid]||[];
+        if(pts.length>1) coordLines.push(pts);
       });
     }
-    // shapes байхгүй бол зам зурахгүй — зөвхөн зогсоолуудыг харуулна
 
-    const stops = allStopsMode
-      ? [] // stops.txt-аас шууд харуулна доор
-      : [...(routeStopsMap[r.route_id]||[])].map(sid => stopsMap[sid]).filter(Boolean);
+    const rStops = stopTimes
+      ? [...(routeStops[r.route_id]||[])].map(id=>stopMap[id]).filter(Boolean)
+      : [];
 
-    return { id: r.route_id, name, short: r.route_short_name||'', type,
-             color, textColor, coordLines, stops, raw: r };
-  }).filter(r => r.coordLines.length > 0 || r.stops.length > 0);
+    return {id:r.route_id, name, short, longname, type, color, coordLines, rStops};
+  }).filter(r=>r.coordLines.length>0||r.rStops.length>0);
 
-  // Unique types
-  allTypes = [...new Set(routeMeta.map(r => r.type))].sort((a,b)=>a-b);
-  allTypes.forEach(t => { typeFilters[t] = false; });
+  // Types
+  allTypes = [...new Set(routes.map(r=>r.type))].sort((a,b)=>a-b);
+  allTypes.forEach(t=>{ typeOn[t]=true; });
+
+  // Stop → routes cache
+  const stopRouteMap={};
+  if(stopTimes){
+    routes.forEach(r=>{
+      r.rStops.forEach(s=>{
+        if(!stopRouteMap[s.stop_id]) stopRouteMap[s.stop_id]=[];
+        stopRouteMap[s.stop_id].push(r.short||r.id);
+      });
+    });
+  }
+
+  // All stops GeoJSON
+  const stopFeatures = stops.map(s=>{
+    const lon=parseFloat(s.stop_lon), lat=parseFloat(s.stop_lat);
+    if(isNaN(lon)||isNaN(lat)) return null;
+    return {
+      type:'Feature',
+      properties:{name:s.stop_name||'', routes:(stopRouteMap[s.stop_id]||[]).slice(0,8).join(', ')},
+      geometry:{type:'Point', coordinates:[lon,lat]}
+    };
+  }).filter(Boolean);
+
+  // Map update
+  if(map.getSource('stops')) map.getSource('stops').setData({type:'FeatureCollection',features:stopFeatures});
+  renderMap();
+
+  // Fit bounds
+  const lons=stops.map(s=>parseFloat(s.stop_lon)).filter(v=>!isNaN(v));
+  const lats=stops.map(s=>parseFloat(s.stop_lat)).filter(v=>!isNaN(v));
+  if(lons.length){
+    map.fitBounds([[Math.min(...lons),Math.min(...lats)],[Math.max(...lons),Math.max(...lats)]],{padding:40});
+  }
 
   buildUI();
-  redrawAllLayers();
-  fitBounds();
 }
 
-// ═══════════════════════════════════════════════
-//  BUILD UI
-// ═══════════════════════════════════════════════
-function buildUI() {
-  // Types
-  const typeList = document.getElementById('type-list');
-  typeList.innerHTML = '';
-  allTypes.forEach(t => {
-    const label = document.createElement('label');
-    label.className = 'type-row';
-    label.innerHTML = `<input type="checkbox" data-type="${t}">
-      <strong>${ROUTE_TYPE_NAMES[t]||'Type '+t}</strong>`;
-    label.querySelector('input').addEventListener('change', e => {
-      typeFilters[t] = e.target.checked;
-      renderRouteList();
-      updateRouteTypeVisibility();
-    });
-    typeList.appendChild(label);
-  });
-  document.getElementById('types-section').style.display = '';
-  document.getElementById('vis-section').style.display = '';
-  document.getElementById('search-wrap').style.display = '';
-  document.getElementById('routes-header').style.display = '';
+// ═══════════════════════════
+//  RENDER MAP — зөвхөн setData дуудна
+// ═══════════════════════════
+function renderMap(){
+  if(!map.getSource('routes')) return; // map load дуусаагүй
 
-  document.getElementById('hide-stops').addEventListener('change', e => {
-    stopsVisible = !e.target.checked;
-    toggleStopsVisibility();
+  const features = routes
+    .filter(r=>r.coordLines.length>0)
+    .map(r=>({
+      type:'Feature',
+      properties:{
+        route_id:r.id, color:r.color,
+        short:r.short, longname:r.longname,
+        vis: typeOn[r.type]?1:0,
+        act: selRoute===r.id?1:0
+      },
+      geometry:{type:'MultiLineString', coordinates:r.coordLines}
+    }));
+
+  map.getSource('routes').setData({type:'FeatureCollection',features});
+}
+
+// ═══════════════════════════
+//  BUILD UI
+// ═══════════════════════════
+function buildUI(){
+  // Types
+  const tl=document.getElementById('type-list');
+  tl.innerHTML='';
+  allTypes.forEach(t=>{
+    const lbl=document.createElement('label');
+    lbl.className='type-row';
+    lbl.innerHTML=`<input type="checkbox" ${typeOn[t]?'checked':''}>
+      <strong>${TYPE_NAMES[t]||'Type '+t}</strong>`;
+    lbl.querySelector('input').addEventListener('change',e=>{
+      typeOn[t]=e.target.checked;
+      renderRouteList();
+      renderMap();
+    });
+    tl.appendChild(lbl);
+  });
+
+  document.getElementById('sec-types').style.display='';
+  document.getElementById('sec-vis').style.display='';
+  document.getElementById('search-wrap').style.display='';
+  document.getElementById('list-header').style.display='';
+
+  document.getElementById('hide-stops').addEventListener('change',e=>{
+    stopsOn=!e.target.checked;
+    if(map.getLayer('stops')) map.setLayoutProperty('stops','visibility',stopsOn?'visible':'none');
+  });
+
+  document.getElementById('search').addEventListener('input',e=>{
+    filterText=e.target.value.toLowerCase().trim();
+    renderRouteList();
   });
 
   renderRouteList();
 }
 
-function renderRouteList(filter='') {
-  const list = document.getElementById('routes-list');
-  list.innerHTML = '';
-  const visible = routeMeta.filter(r =>
-    typeFilters[r.type] &&
-    (!filter || r.name.toLowerCase().includes(filter) || r.short.toLowerCase().includes(filter))
-  );
-  document.getElementById('route-count').textContent = visible.length + ' routes';
-
-  visible.forEach(r => {
-    const div = document.createElement('div');
-    div.className = 'route-item' + (activeRoutes.has(r.id) ? ' active' : '');
-    div.style.setProperty('--rc', r.color || '#7777dd');
-    div.innerHTML = `<div class="route-dot"></div>
-      <div class="route-name"><span class="route-short">${r.short ? r.short+' ' : ''}</span>${r.raw.route_long_name||''}</div>`;
-    div.addEventListener('click', () => toggleRoute(r.id));
-    list.appendChild(div);
+function renderRouteList(){
+  const vis=routes.filter(r=>typeOn[r.type]&&
+    (!filterText||r.name.toLowerCase().includes(filterText)||r.short.toLowerCase().includes(filterText)));
+  document.getElementById('route-count').textContent=vis.length+' routes';
+  const ul=document.getElementById('route-list');
+  ul.innerHTML='';
+  vis.forEach(r=>{
+    const div=document.createElement('div');
+    div.className='route-item'+(selRoute===r.id?' sel':'');
+    div.style.setProperty('--c',r.color);
+    div.innerHTML=`<div class="rdot"></div>
+      <div class="rname">${r.short?`<span class="rshort">${r.short}</span> `:''} ${r.longname||''}</div>`;
+    div.addEventListener('click',()=>toggleRoute(r.id));
+    ul.appendChild(div);
   });
 }
 
-document.getElementById('route-search').addEventListener('input', e => {
-  renderRouteList(e.target.value.toLowerCase().trim());
-});
-
-// ═══════════════════════════════════════════════
-//  MAP LAYERS
-// ═══════════════════════════════════════════════
-function redrawAllLayers() {
-  if (!map.loaded() || !gtfsLoaded) return;
-
-  // Арилгах
-  cleanupLayers();
-
-  // Бүх routes-ийн line layer (MultiLineString)
-  const features = routeMeta
-    .filter(r => r.coordLines.length > 0)
-    .map(r => ({
-      type:'Feature',
-      properties:{ route_id: r.id, color: r.color||'#555577',
-                   route_name: r.name, route_short: r.short||r.id,
-                   active: activeRoutes.has(r.id) ? 1 : 0 },
-      geometry:{ type:'MultiLineString', coordinates: r.coordLines }
-    }));
-
-  if (map.getSource('all-routes')) {
-    map.getSource('all-routes').setData({ type:'FeatureCollection', features });
+function toggleRoute(id){
+  const r=routes.find(x=>x.id===id);
+  if(!r) return;
+  if(selRoute===id){
+    selRoute=null;
+    document.getElementById('detail').classList.remove('open');
   } else {
-    map.addSource('all-routes', { type:'geojson', data:{ type:'FeatureCollection', features } });
-    // Идэвхгүй зураасууд (бүдэг)
-    map.addLayer({
-      id:'routes-inactive', type:'line',
-      source:'all-routes',
-      filter:['==',['get','active'],0],
-      paint:{
-        'line-color':['get','color'],
-        'line-width':['interpolate',['linear'],['zoom'],10,1.5,15,3],
-        'line-opacity':0.35
-      }
-    });
-    // Идэвхтэй зураасууд (тод)
-    map.addLayer({
-      id:'routes-active', type:'line',
-      source:'all-routes',
-      filter:['==',['get','active'],1],
-      paint:{
-        'line-color':['get','color'],
-        'line-width':['interpolate',['linear'],['zoom'],10,3,15,6],
-        'line-opacity':0.95
-      }
-    });
-  }
-
-  // Зогсоолууд
-  addStopsLayer();
-  // Route click/hover (зөвхөн нэг удаа)
-  if (!map._routeInteractionAdded) {
-    addRouteInteraction();
-    map._routeInteractionAdded = true;
-  }
-}
-
-function addStopsLayer() {
-  const stops = gtfsData.stops||[];
-  // Бүх зогсоолыг харуулна (stop_times байхгүй үед ч мөн адил)
-  const features = stops.map(s => ({
-    type:'Feature',
-    properties:{ stop_id: s.stop_id, stop_name: s.stop_name||'',
-                 routes: getStopRoutes(s.stop_id) },
-    geometry:{ type:'Point', coordinates:[parseFloat(s.stop_lon), parseFloat(s.stop_lat)] }
-  })).filter(f => !isNaN(f.geometry.coordinates[0]));
-
-  if (map.getSource('stops')) {
-    map.getSource('stops').setData({ type:'FeatureCollection', features });
-  } else {
-    map.addSource('stops', { type:'geojson', data:{ type:'FeatureCollection', features },
-      cluster:false });
-    map.addLayer({
-      id:'stops-layer', type:'circle', source:'stops',
-      layout:{ visibility: stopsVisible ? 'visible' : 'none' },
-      paint:{
-        'circle-radius':['interpolate',['linear'],['zoom'],10,1,14,2.5,18,4.5],
-        'circle-color':'#38bdf8',
-        'circle-stroke-width':0,
-        'circle-opacity':0.9
-      }
-    });
-
-    // Popup
-    map.on('click','stops-layer', e => {
-      const p = e.features[0].properties;
-      new maplibregl.Popup({ closeButton:true, maxWidth:'260px' })
-        .setLngLat(e.features[0].geometry.coordinates)
-        .setHTML(`<div class="popup-stop-name">${p.stop_name}</div>
-          <div class="popup-routes">${p.routes||''}</div>`)
-        .addTo(map);
-    });
-    map.on('mouseenter','stops-layer', () => { map.getCanvas().style.cursor='pointer'; });
-    map.on('mouseleave','stops-layer', () => { map.getCanvas().style.cursor=''; });
-  }
-}
-
-function addRouteInteraction() {
-  // Hover cursor
-  ['routes-inactive','routes-active'].forEach(layerId => {
-    map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = ''; });
-
-    map.on('click', layerId, e => {
-      const rid = e.features[0].properties.route_id;
-      const r = routeMeta.find(x => x.id === rid);
-      if (!r) return;
-      const short = r.short || r.id;
-      const long  = r.raw.route_long_name || '';
-      const color = r.color || '#7777dd';
-      new maplibregl.Popup({ closeButton: true, maxWidth: '280px' })
-        .setLngLat(e.lngLat)
-        .setHTML(`
-          <div class="popup-stop-name" style="display:flex;align-items:center;gap:8px;">
-            <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${color};flex-shrink:0"></span>
-            Route
-          </div>
-          <div class="popup-routes" style="margin-top:4px;">
-            ${short ? '<strong style=\'color:#e8e8f0\'>' + short + '</strong> · ' : ''}${long}
-          </div>`)
-        .addTo(map);
-    });
-  });
-}
-
-// Зогсоол дээр дамжих чиглэлүүд
-const stopRouteCache = {};
-function getStopRoutes(stopId) {
-  if (stopRouteCache[stopId]) return stopRouteCache[stopId];
-  const routes = routeMeta.filter(r => r.stops.some(s => s.stop_id === stopId))
-    .map(r => r.short||r.id).slice(0,8).join(', ');
-  stopRouteCache[stopId] = routes;
-  return routes;
-}
-
-// typeFilters-т үндэслэн map дээрх route-уудыг харуулах/нуух
-function updateRouteTypeVisibility() {
-  if (!map.getLayer('routes-inactive') || !map.getLayer('routes-active')) return;
-
-  // Харуулах route_id-уудын жагсаалт
-  const visibleIds = routeMeta
-    .filter(r => typeFilters[r.type] && r.coordLines.length > 0)
-    .map(r => r.id);
-
-  if (visibleIds.length === 0) {
-    // Бүгдийг нуух — match нь байхгүй id ашиглах
-    map.setFilter('routes-inactive', ['==', ['get', 'route_id'], '__none__']);
-    map.setFilter('routes-active',   ['==', ['get', 'route_id'], '__none__']);
-  } else {
-    map.setFilter('routes-inactive', ['all',
-      ['==', ['get', 'active'], 0],
-      ['in', ['get', 'route_id'], ['literal', visibleIds]]
-    ]);
-    map.setFilter('routes-active', ['all',
-      ['==', ['get', 'active'], 1],
-      ['in', ['get', 'route_id'], ['literal', visibleIds]]
-    ]);
-  }
-}
-
-function cleanupLayers() {
-  ['routes-inactive','routes-active'].forEach(id => {
-    if (map.getLayer(id)) map.removeLayer(id);
-  });
-  if (map.getSource('all-routes')) map.removeSource('all-routes');
-}
-
-function toggleStopsVisibility() {
-  if (!map.getLayer('stops-layer')) return;
-  map.setLayoutProperty('stops-layer','visibility', stopsVisible ? 'visible' : 'none');
-}
-
-// ═══════════════════════════════════════════════
-//  TOGGLE ROUTE
-// ═══════════════════════════════════════════════
-function toggleRoute(routeId) {
-  const r = routeMeta.find(x => x.id === routeId);
-  if (!r) return;
-
-  if (activeRoutes.has(routeId)) {
-    activeRoutes.delete(routeId);
-    selectedRoute = null;
-    closeDetail();
-  } else {
-    activeRoutes.add(routeId);
-    selectedRoute = routeId;
-    openDetail(r);
-  }
-
-  // Source шинэчлэх
-  if (map.getSource('all-routes')) {
-    const features = routeMeta
-      .filter(x => x.coordLines.length > 0)
-      .map(x => ({
-        type:'Feature',
-        properties:{ route_id:x.id, color:x.color||'#555577',
-                     route_name:x.name, route_short:x.short||x.id,
-                     active: activeRoutes.has(x.id) ? 1 : 0 },
-        geometry:{ type:'MultiLineString', coordinates:x.coordLines }
-      }));
-    map.getSource('all-routes').setData({ type:'FeatureCollection', features });
-  }
-
-  renderRouteList(document.getElementById('route-search').value.toLowerCase().trim());
-
-  // Fit bounds
-  if (activeRoutes.has(routeId) && r.coordLines.length > 0) {
-    const allPts = r.coordLines.flat();
-    const lngs = allPts.map(c=>c[0]), lats = allPts.map(c=>c[1]);
-    map.fitBounds([
-      [Math.min(...lngs),Math.min(...lats)],
-      [Math.max(...lngs),Math.max(...lats)]
-    ], { padding:60, maxZoom:15 });
-  }
-}
-
-// ═══════════════════════════════════════════════
-//  DETAIL PANEL
-// ═══════════════════════════════════════════════
-function openDetail(r) {
-  document.getElementById('detail-title').textContent = r.name;
-  document.getElementById('detail-sub').textContent =
-    `${ROUTE_TYPE_NAMES[r.type]||'Route'} · ${r.stops.length} зогсоол`;
-  document.getElementById('detail-panel').classList.add('open');
-}
-function closeDetail() {
-  document.getElementById('detail-panel').classList.remove('open');
-}
-document.getElementById('detail-back').addEventListener('click', () => {
-  if (selectedRoute) {
-    activeRoutes.delete(selectedRoute);
-    selectedRoute = null;
-    if (map.getSource('all-routes')) {
-      const features = routeMeta.filter(x => x.coordLines.length > 0).map(x => ({
-        type:'Feature',
-        properties:{ route_id:x.id, color:x.color||'#555577',
-                     route_name:x.name, route_short:x.short||x.id, active:0 },
-        geometry:{ type:'MultiLineString', coordinates:x.coordLines }
-      }));
-      map.getSource('all-routes').setData({ type:'FeatureCollection', features });
+    selRoute=id;
+    document.getElementById('detail-title').textContent=r.name;
+    document.getElementById('detail-sub').textContent=
+      `${TYPE_NAMES[r.type]||'Route'} · ${r.rStops.length||'?'} зогсоол`;
+    document.getElementById('detail').classList.add('open');
+    // Fit
+    if(r.coordLines.length>0){
+      const pts=r.coordLines.flat();
+      const lons=pts.map(p=>p[0]),lats=pts.map(p=>p[1]);
+      map.fitBounds([[Math.min(...lons),Math.min(...lats)],[Math.max(...lons),Math.max(...lats)]],{padding:60,maxZoom:15});
     }
-    renderRouteList(document.getElementById('route-search').value.toLowerCase().trim());
   }
-  closeDetail();
+  renderRouteList();
+  renderMap();
+}
+
+document.getElementById('detail-back').addEventListener('click',()=>{
+  selRoute=null;
+  document.getElementById('detail').classList.remove('open');
+  renderRouteList();
+  renderMap();
 });
 
-// ═══════════════════════════════════════════════
-//  FIT BOUNDS
-// ═══════════════════════════════════════════════
-function fitBounds() {
-  const stops = gtfsData.stops||[];
-  if (!stops.length) return;
-  const lngs = stops.map(s=>parseFloat(s.stop_lon)).filter(v=>!isNaN(v));
-  const lats = stops.map(s=>parseFloat(s.stop_lat)).filter(v=>!isNaN(v));
-  if (!lngs.length) return;
-  map.fitBounds([
-    [Math.min(...lngs),Math.min(...lats)],
-    [Math.max(...lngs),Math.max(...lats)]
-  ], { padding:40 });
-}
-
-// ═══════════════════════════════════════════════
-//  LOADING
-// ═══════════════════════════════════════════════
-function showLoading(msg){ document.getElementById('loading').classList.remove('hidden'); setLoadMsg(msg); }
-function hideLoading()   { document.getElementById('loading').classList.add('hidden'); }
-function setLoadMsg(m)   { document.getElementById('loading-msg').textContent = m; }
-function setStatus(m, cls='') {
-  const el = document.getElementById('import-status');
-  el.textContent = m; el.className = 'import-status ' + cls;
-}
-
-// Label бүдэгрүүлэх (шөнийн горимд)
-function dimLabels() {
-  const style = map.getStyle();
-  if (!style || !style.layers) return;
-  style.layers.forEach(layer => {
-    if (layer.type === 'symbol' && layer.layout && layer.layout['text-field']) {
-      try {
-        map.setPaintProperty(layer.id, 'text-opacity',
-          isDark ? 0.35 : 1.0);
-      } catch(e) {}
-    }
-  });
-}
-
-// Map load дээр source байвал дахин нэмэх
-map.on('style.load', () => {
-  if (gtfsLoaded) redrawAllLayers();
-  setTimeout(dimLabels, 100);
-});
+// ═══════════════════════════
+//  HELPERS
+// ═══════════════════════════
+function setStatus(msg,cls){const el=document.getElementById('status');el.textContent=msg;el.className='status '+cls}
+function showOverlay(msg){document.getElementById('overlay').classList.remove('hidden');setOverlayMsg(msg)}
+function hideOverlay(){document.getElementById('overlay').classList.add('hidden')}
+function setOverlayMsg(msg){document.getElementById('overlay-msg').textContent=msg}
 </script>
 </body>
 </html>
