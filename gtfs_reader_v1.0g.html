@@ -1,182 +1,406 @@
 <!DOCTYPE html>
 <html lang="mn">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GTFS Reader v1.0g</title>
-    <style>
-        :root {
-            --bg-color: #121212;
-            --surface-color: #1e1e1e;
-            --primary-color: #79a6d2;
-            --text-color: #e0e0e0;
-            --border-color: #333;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GTFS Reader v2.0g</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #4f8ef7;
+    --accent2: #7c5cfc;
+    --success: #2dd4a0;
+    --warn: #f5a623;
+    --danger: #f25a5a;
+    --text: #e8eaf2;
+    --text2: #8b90a8;
+    --tab-h: 40px;
+    --font: 'Segoe UI', system-ui, sans-serif;
+    --mono: 'Consolas', 'SF Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; min-height: 100vh; padding-bottom: 44px; }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 20px;
-        }
+  /* HEADER */
+  .header { background: linear-gradient(135deg, #0f1117 0%, #1a1430 100%); border-bottom: 1px solid var(--border); padding: 22px 24px 18px; }
+  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; background: linear-gradient(90deg, #4f8ef7, #7c5cfc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .header p { color: var(--text2); font-size: 13px; margin-top: 6px; line-height: 1.6; max-width: 1000px; }
 
-        #fileInput { margin-bottom: 10px; color: var(--text-color); }
-        #zipName { color: var(--primary-color); margin-bottom: 10px; }
+  /* TAB BAR — v2.1c яг адил */
+  .tabbar-wrap { background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+  .tabbar-wrap::-webkit-scrollbar { display: none; }
+  .tabbar { display: flex; align-items: flex-end; padding: 0 12px; gap: 2px; min-width: max-content; }
+  .tab-btn {
+    height: var(--tab-h); padding: 0 14px; border: none; background: transparent;
+    color: var(--text2); font-size: 12px; font-family: var(--mono); cursor: pointer;
+    border-radius: 6px 6px 0 0; white-space: nowrap; border: 1px solid transparent;
+    border-bottom: none; transition: all 0.15s; position: relative; top: 1px;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--surface2); }
+  .tab-btn.active { background: var(--bg); color: var(--accent); border-color: var(--border); border-bottom-color: var(--bg); }
+  .tab-btn .req-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-left: 5px; vertical-align: middle; position: relative; top: -1px; }
+  .tab-btn .req-dot.r { background: var(--danger); }
+  .tab-btn .req-dot.y { background: var(--warn); }
+  .tab-btn .req-dot.g { background: var(--text2); }
 
-        #nav-bar { 
-            display: flex; 
-            gap: 10px; 
-            flex-wrap: wrap; 
-            margin-top: 10px; 
-            border-bottom: 1px solid var(--border-color); 
-            padding-bottom: 10px; 
-        }
+  /* Import товчнууд tab-btn хэлбэртэй */
+  .tab-import-btn {
+    height: var(--tab-h); padding: 0 14px; border: none; background: transparent;
+    color: var(--accent); font-size: 12px; font-family: var(--mono); cursor: pointer;
+    border-radius: 6px 6px 0 0; white-space: nowrap; border: 1px solid var(--border);
+    border-bottom: none; transition: all 0.15s; position: relative; top: 1px;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .tab-import-btn:hover { background: #0e1e3a; color: #fff; }
 
-        .nav-item { 
-            cursor: pointer; 
-            padding: 8px 16px; 
-            background: var(--surface-color); 
-            border: 1px solid var(--border-color);
-            border-radius: 4px; 
-            transition: 0.3s;
-        }
+  /* BUTTONS (modal дотор) */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--surface2);
+    color: var(--text); font-size: 12px; cursor: pointer; white-space: nowrap;
+    transition: all 0.15s; font-family: var(--font);
+  }
+  .btn:hover { background: var(--border); color: #fff; }
+  .btn.accent { color: var(--accent); border-color: var(--accent); }
+  .btn.accent:hover { background: #0e1e3a; }
+  #fileInput { display: none; }
 
-        /* Заавал байх файлын стиль (Цэнхэр) */
-        .nav-item.required {
-            border: 1px solid var(--primary-color);
-            background-color: rgba(121, 166, 210, 0.15);
-        }
-        .nav-item.required:hover { background: var(--primary-color); color: #000; }
+  /* INFO BAR */
+  .info-bar {
+    padding: 6px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+    font-size: 11px; color: var(--text2); font-family: var(--mono);
+    display: flex; align-items: center; gap: 16px; min-height: 30px; flex-wrap: wrap;
+  }
+  .info-bar .zip-name  { color: var(--accent); font-weight: 600; }
+  .info-bar .col-stat  { color: var(--success); }
 
-        /* Shapes файлын стиль (Шар) */
-        .nav-item.shapes {
-            border: 1px solid #f1c40f;
-            background-color: rgba(121, 166, 210, 0.15);
-        }
-        .nav-item.shapes:hover { background: #f1c40f; color: #000; }
+  /* TABLE — v2.1c яг адил */
+  .table-wrap { overflow: auto; max-height: calc(100vh - 200px); }
+  table { border-collapse: collapse; width: max-content; min-width: 100%; }
+  thead th {
+    position: sticky; top: 0; z-index: 10; background: var(--surface); padding: 7px 10px;
+    font-size: 11px; font-family: var(--mono); font-weight: 600; color: var(--text2);
+    border-right: 1px solid var(--border); border-bottom: 2px solid var(--border);
+    white-space: nowrap; user-select: none; cursor: default;
+  }
+  tbody td {
+    border-right: 1px solid var(--border); border-bottom: 1px solid #1e2130;
+    padding: 4px 10px; height: 32px; vertical-align: middle;
+    font-size: 12px; font-family: var(--mono); color: var(--text); white-space: nowrap;
+  }
+  tbody tr:hover td { background: #191d2e; }
+  tbody tr:nth-child(even) td { background: #151820; }
+  tbody tr:nth-child(even):hover td { background: #191d2e; }
 
-        /* Байж болох файлын стиль (Саарал) */
-        .nav-item.optional {
-            border: 1px solid #444;
-            color: #aaa;
-        }
-        .nav-item.optional:hover { background: #333; color: #fff; }
-        
-        h2 { margin: 5px; font-size: 22px; font-weight: 500; }
-        #info-bar { margin: 5px 0; font-size: 1.0rem; color: #aaa; font-style: italic; }
+  /* EMPTY STATE */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: calc(100vh - 200px); gap: 12px; color: var(--text2);
+  }
+  .empty-state .es-icon  { font-size: 48px; opacity: 0.4; }
+  .empty-state .es-title { font-size: 16px; font-weight: 600; color: var(--text); }
+  .empty-state .es-sub   { font-size: 13px; }
 
-        #table-container { 
-            margin-top: 10px; 
-            overflow: auto; 
-            max-height: calc(100vh - 200px);
-        }
+  /* TOAST */
+  #toast-container { position: fixed; bottom: 50px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+  .toast { padding: 10px 16px; border-radius: 8px; font-size: 13px; animation: fadeIn 0.2s ease; max-width: 380px; }
+  .toast.ok  { background: #0e2a22; border: 1px solid var(--success); color: var(--success); }
+  .toast.err { background: #2a0e0e; border: 1px solid var(--danger);  color: var(--danger); }
+  .toast.inf { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 
-        table { 
-            border-collapse: collapse;
-            border-spacing: 0;
-            width: 100%; 
-            background: var(--surface-color);
-            border-radius: 4px;
-        }
-        
-        thead th { 
-            position: sticky; 
-            top: -1px; 
-            background-color: #2c2c2c;
-            color: var(--primary-color);
-            z-index: 10;
-            border-bottom: 1px solid var(--primary-color);
-            padding: 10px;
-            text-align: left;
-            background-clip: padding-box;
-        }
+  /* FOOTER */
+  .footer {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    height: 36px; background: var(--surface); border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--text2); opacity: 0.6; user-select: none;
+  }
 
-        th, td { border: 1px solid var(--border-color); padding: 4px 10px; text-align: left; }
-        tr:nth-child(even) { background-color: #252525; }
-    </style>
+  @media (max-width: 600px) {
+    .header { padding: 14px; }
+    .header h1 { font-size: 18px; }
+  }
+</style>
 </head>
 <body>
 
-    <input type="file" id="fileInput" accept=".zip" />
-    <h2 id="zipName"></h2>
-    <div id="nav-bar"></div>
-    <div id="info-bar"></div>
-    <div id="table-container"></div>
+<!-- HEADER -->
+<div class="header">
+  <h1>📖 GTFS Reader v2.0g</h1>
+  <p>GTFS Schedule стандартын дагуу нийтийн тээврийн үйлчилгээний өгөгдлийг бүтцэлж, баталгаажуулж, zip форматаар экспортлоно.</p>
+  <p><strong style="color:#f25a5a">Улаан</strong> = Required, <strong style="color:#f5a623">Шар</strong> = Conditionally Required, <strong style="color:#8b90a8">Саарал</strong> = Optional. Foreign ID уялдаа, Field type шаардлагуудыг автоматаар хянана.</p>
+</div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<!-- TAB BAR — Import товчнууд + файлын tab-ууд -->
+<div class="tabbar-wrap">
+  <div class="tabbar" id="tabbar">
+    <input type="file" id="fileInput" accept=".zip">
+    <button class="tab-import-btn" onclick="document.getElementById('fileInput').click()">📥 Import</button>
+    <button class="tab-import-btn" onclick="importGTFSFromUrl()">🔗 Import URL</button>
+    <!-- Файл tab-ууд энд динамикаар нэмэгдэнэ -->
+  </div>
+</div>
 
-    <script>
-        const fileInput = document.getElementById('fileInput');
-        const navBar = document.getElementById('nav-bar');
-        const tableContainer = document.getElementById('table-container');
-        const infoBar = document.getElementById('info-bar');
-        const zipNameDisplay = document.getElementById('zipName');
-        let zipData = {};
+<!-- INFO BAR -->
+<div class="info-bar" id="info-bar">
+  <span style="opacity:0.4">ZIP файл оруулаагүй байна</span>
+</div>
 
-        const requiredFiles = [
-            'agency.txt', 'stops.txt', 'routes.txt', 
-            'trips.txt', 'stop_times.txt', 'calendar.txt'
-        ];
+<!-- TABLE / EMPTY STATE -->
+<div id="main-content">
+  <div class="empty-state">
+    <span class="es-icon">🗂</span>
+    <span class="es-title">GTFS ZIP файл нээх</span>
+    <span class="es-sub">Import товч эсвэл Import URL товчийг ашиглана уу</span>
+  </div>
+</div>
 
-        fileInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+<div class="footer">2026 © GTFS Reader</div>
+<div id="toast-container"></div>
 
-            zipNameDisplay.innerText = file.name;
-            const zip = await JSZip.loadAsync(file);
-            navBar.innerHTML = '';
-            infoBar.innerHTML = '';
-            tableContainer.innerHTML = '';
-            zipData = {};
+<script>
+const REQUIRED_FILES = ['agency.txt','stops.txt','routes.txt','trips.txt','stop_times.txt','calendar.txt'];
+const SHAPES_FILE    = 'shapes.txt';
 
-            zip.forEach((relativePath, zipEntry) => {
-                if (zipEntry.name.endsWith('.txt')) {
-                    zipData[zipEntry.name] = zipEntry;
-                    
-                    const btn = document.createElement('div');
-                    btn.className = 'nav-item';
-                    
-                    // Ангилал тогтоох логик
-                    if (zipEntry.name === 'shapes.txt') {
-                        btn.classList.add('shapes');
-                    } else if (requiredFiles.includes(zipEntry.name)) {
-                        btn.classList.add('required');
-                    } else {
-                        btn.classList.add('optional');
-                    }
-                    
-                    btn.innerText = zipEntry.name.replace('.txt', '');
-                    btn.onclick = () => renderTable(zipEntry.name);
-                    navBar.appendChild(btn);
-                }
-            });
-        });
+let zipData        = {};
+let currentZipName = '';
+let activeFile     = '';
 
-        async function renderTable(fileName) {
-            const content = await zipData[fileName].async('string');
-            const data = Papa.parse(content, { header: true, skipEmptyLines: true });
-            
-            if (data.data.length === 0) return;
+// ── FILE INPUT ────────────────────────────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  toast('zip файлыг задлаж байна...', 'inf');
+  try {
+    const zip = await JSZip.loadAsync(file);
+    loadZip(zip, file.name);
+  } catch (err) {
+    toast('ZIP задлахад алдаа гарлаа: ' + err.message, 'err');
+  }
+  e.target.value = '';
+});
 
-            const columns = Object.keys(data.data[0]);
-            const rowCount = data.data.length;
-            infoBar.innerText = `${fileName} · ${columns.length} багана · ${rowCount} мөр`;
+// ── LOAD ZIP ──────────────────────────────────────────────────────────────────
+function loadZip(zip, name) {
+  zipData = {};
+  currentZipName = name;
+  activeFile = '';
 
-            let html = '<table><thead><tr>';
-            columns.forEach(key => html += `<th>${key}</th>`);
-            html += '</tr></thead><tbody>';
-            
-            data.data.forEach(row => {
-                html += '<tr>';
-                Object.values(row).forEach(val => html += `<td>${val}</td>`);
-                html += '</tr>';
-            });
-            
-            html += '</tbody></table>';
-            tableContainer.innerHTML = html;
-        }
-    </script>
+  zip.forEach((relPath, entry) => {
+    const fname = relPath.split('/').pop();
+    if (fname.endsWith('.txt')) zipData[fname] = entry;
+  });
+
+  const fileNames = Object.keys(zipData);
+  if (fileNames.length === 0) return toast('ZIP доторх .txt файл олдсонгүй', 'err');
+
+  buildTabs(fileNames);
+  setInfoBar(name, null);
+  toast('zip файл амжилттай ачаалагдлаа.', 'ok');
+
+  const first = REQUIRED_FILES.find(f => zipData[f]) || fileNames[0];
+  if (first) renderTable(first);
+}
+
+// ── BUILD TABS ────────────────────────────────────────────────────────────────
+function buildTabs(fileNames) {
+  const bar = document.getElementById('tabbar');
+
+  // Remove old file tabs (keep Import buttons = first 2 elements)
+  const importBtns = Array.from(bar.children).slice(0, 3); // input + 2 buttons
+  bar.innerHTML = '';
+  importBtns.forEach(el => bar.appendChild(el));
+
+  // Sort: required → shapes → optional, then alpha
+  const sorted = [...fileNames].sort((a, b) => {
+    const rank = f => REQUIRED_FILES.includes(f) ? 0 : f === SHAPES_FILE ? 1 : 2;
+    return rank(a) - rank(b) || a.localeCompare(b);
+  });
+
+  sorted.forEach(fname => {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn';
+    btn.dataset.file = fname;
+
+    // Dot color
+    let dotCls = 'g';
+    if (REQUIRED_FILES.includes(fname)) dotCls = 'r';
+    else if (fname === SHAPES_FILE)     dotCls = 'y';
+
+    // Full filename яг v2.1c шиг
+    btn.innerHTML = fname + `<span class="req-dot ${dotCls}"></span>`;
+    btn.onclick = () => renderTable(fname);
+    bar.appendChild(btn);
+  });
+}
+
+// ── RENDER TABLE ──────────────────────────────────────────────────────────────
+async function renderTable(fname) {
+  activeFile = fname;
+  document.querySelectorAll('.tab-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.file === fname)
+  );
+
+  const content = await zipData[fname].async('string');
+  const data    = Papa.parse(content, { header: true, skipEmptyLines: true });
+
+  if (!data.data.length) {
+    document.getElementById('main-content').innerHTML = `
+      <div class="empty-state">
+        <span class="es-icon">📭</span>
+        <span class="es-title">${fname} хоосон байна</span>
+      </div>`;
+    setInfoBar(currentZipName, { fname, cols: 0, rows: 0 });
+    return;
+  }
+
+  const cols     = Object.keys(data.data[0]);
+  const rowCount = data.data.length;
+  setInfoBar(currentZipName, { fname, cols: cols.length, rows: rowCount });
+
+  let html = '<div class="table-wrap"><table><thead><tr>';
+  cols.forEach(k => { html += `<th>${escHtml(k)}</th>`; });
+  html += '</tr></thead><tbody>';
+  data.data.forEach(row => {
+    html += '<tr>';
+    cols.forEach(k => { html += `<td>${escHtml(String(row[k] ?? ''))}</td>`; });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  document.getElementById('main-content').innerHTML = html;
+}
+
+// ── INFO BAR ──────────────────────────────────────────────────────────────────
+function setInfoBar(zipName, stat) {
+  const bar = document.getElementById('info-bar');
+  let html = `<span class="zip-name">📦 ${escHtml(zipName)}</span>`;
+  if (stat && stat.fname) {
+    html += `<span>${escHtml(stat.fname)}</span>`;
+    html += `<span class="col-stat">${stat.cols} багана · ${stat.rows.toLocaleString()} мөр</span>`;
+  }
+  bar.innerHTML = html;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── IMPORT URL ────────────────────────────────────────────────────────────────
+async function importGTFSFromUrl() {
+  showUrlModal(async url => {
+    if (!url) return;
+    url = url.trim();
+    if (!url.startsWith('http')) return toast('Зөв URL оруулна уу (https://...)', 'err');
+
+    toast('zip файлыг татаж байна...', 'inf');
+
+    const proxies = [
+      url,
+      `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      `https://cors-anywhere.herokuapp.com/${url}`,
+    ];
+
+    let blob, lastErr = '';
+    for (const proxyUrl of proxies) {
+      try {
+        const res = await fetch(proxyUrl, { headers: { 'Accept': '*/*' } });
+        if (!res.ok) { lastErr = `HTTP ${res.status}`; continue; }
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('text/html') && !ct.includes('zip')) { lastErr = 'HTML хариу ирлээ'; continue; }
+        blob = await res.blob();
+        if (blob.size < 100) { lastErr = `Файл хэт жижиг (${blob.size}б)`; blob = null; continue; }
+        break;
+      } catch (e) { lastErr = e.message; }
+    }
+
+    if (!blob) {
+      toast(`Татахад алдаа гарлаа: ${lastErr}. Файлыг гараар татаж Import товч ашиглана уу.`, 'err');
+      return;
+    }
+
+    toast('zip файлыг задлаж байна...', 'inf');
+    try {
+      const zip     = await JSZip.loadAsync(blob);
+      const zipName = url.split('/').pop().split('?')[0] || 'imported.zip';
+      loadZip(zip, zipName);
+    } catch (err) {
+      toast('ZIP задлахад алдаа гарлаа: ' + err.message, 'err');
+    }
+  });
+}
+
+function showUrlModal(onConfirm) {
+  const existing = document.getElementById('url-modal-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'url-modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:300;display:flex;align-items:center;justify-content:center';
+
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:90%;max-width:540px;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+      <h3 style="color:var(--accent);margin-bottom:8px;font-size:15px">🔗 GTFS ZIP URL оруулах</h3>
+      <p style="color:var(--text2);font-size:12px;margin-bottom:16px;line-height:1.6">
+        GTFS ZIP файлын шууд URL-г оруулна уу. MobilityDatabase, GitHub, агентлагийн сайт гэх мэт аль ч эх сурвалжаас байж болно.
+      </p>
+      <input id="url-modal-input" type="text" placeholder="https://..."
+        style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);
+        border-radius:6px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;margin-bottom:6px"
+        autocomplete="off" spellcheck="false">
+      <p id="url-modal-hint" style="font-size:11px;color:var(--text2);margin-bottom:16px;min-height:16px"></p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button id="url-modal-cancel" class="btn">Болих</button>
+        <button id="url-modal-ok" class="btn accent" style="background:#0e1e3a">📥 Татаж авах</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const input  = document.getElementById('url-modal-input');
+  const hint   = document.getElementById('url-modal-hint');
+  const okBtn  = document.getElementById('url-modal-ok');
+  const cancel = document.getElementById('url-modal-cancel');
+
+  input.addEventListener('input', () => {
+    const v = input.value.trim();
+    if (!v) { hint.textContent = ''; return; }
+    if (!v.startsWith('http')) {
+      hint.style.color = 'var(--danger)'; hint.textContent = '⚠ https:// эхэлсэн URL байх ёстой'; return;
+    }
+    hint.style.color = 'var(--success)'; hint.textContent = '✓ URL бэлэн байна';
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  okBtn.click();
+    if (e.key === 'Escape') cancel.click();
+  });
+
+  const close = () => overlay.remove();
+  cancel.onclick = close;
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+  okBtn.onclick = () => {
+    const url = input.value.trim();
+    if (!url) { hint.style.color = 'var(--danger)'; hint.textContent = '⚠ URL оруулна уу'; return; }
+    close(); onConfirm(url);
+  };
+  setTimeout(() => input.focus(), 50);
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'inf') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+</script>
 </body>
 </html>
