@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+    <meta charset="UTF-8">
+    <title>GTFS Mapper v1.0g</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body, html { height: 100%; margin: 0; }
+        #wrapper { display: flex; height: 100vh; }
+        #sidebar { width: 320px; padding: 15px; overflow-y: auto; color: #666666; font-weight: 300; background: black; border-right: 1px solid #333333; }
+		#sidebar h6 { color: #007bff; }
+
+        /* Гар утасны загварын нимгэн, дугуйрсан scrollbar */
+        #sidebar{
+          scrollbar-width: thin;              /* Firefox: нимгэн зураас */
+          scrollbar-color: #444444 transparent; /* Firefox: гүйгч өнгө, дэвсгэр тунгалаг */
+        }
+        #sidebar::-webkit-scrollbar{
+          width: 4px;                          /* Chrome/Safari/Edge/гар утас: маш нимгэн зураас */
+        }
+        #sidebar::-webkit-scrollbar-track{
+          background: transparent;             /* Дэвсгэр тунгалаг — зөвхөн гүйгч харагдана */
+        }
+        #sidebar::-webkit-scrollbar-thumb{
+          background-color: #444444;           /* Гүйгчийн өнгө */
+          border-radius: 10px;                 /* Бүрэн дугуйрсан булан — гар утасны хэв маяг */
+        }
+        #sidebar::-webkit-scrollbar-thumb:hover{
+          background-color: #007bff;           /* Хулгана дээгүүр аваачихад тодрох (desktop) */
+        }
+        #map { flex-grow: 1; height: 100vh; position: relative; }
+        .map-controls { position: absolute; top: 10px; right: 10px; z-index: 1000; border-weight: 1px; border-radius: 4px; box-shadow: 0 0 5px rgba(0,0,0,0.3); }
+
+        /* Дан товч — Choose File + файлын нэрийг нэг товч болгож нэгтгэсэн */
+        .import-wrap{
+          position:relative;
+          border-radius:4px; overflow:hidden;
+          border:1px solid #333333; background:#1a1a2e;
+          cursor:pointer; transition:background .15s;
+        }
+        .import-wrap:hover{ background:#252540; }
+        .import-wrap input[type=file]{
+          position:absolute; inset:0;
+          opacity:0; cursor:pointer; width:100%; height:100%;
+        }
+        .import-btn-label{
+          display:flex; align-items:center; gap:8px;
+          padding:9px 12px;
+          font-size:.85rem; color:#cccccc;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+          pointer-events:none;
+        }
+        #gtfsStatus{ font-size:.78rem; color:#666666; margin-top:6px; margin-bottom:14px; min-height:16px; }
+        #gtfsStatus.ok{ color:#3daa72; }
+        #gtfsStatus.err{ color:#cc4444; }
+    </style>
+</head>
+<body>
+
+<div id="wrapper">
+    <div id="sidebar">
+        <h6>GTFS Mapper v1.0g</h6>
+        <div class="import-wrap mb-1">
+            <input type="file" id="fileInput" accept=".zip">
+            <div class="import-btn-label" id="importBtnLabel">GTFS .zip импортлох</div>
+        </div>
+        <div id="gtfsStatus">Файл сонгоогүй байна</div>
+        <input type="checkbox" id="selectAll" checked> <b>Check all routes</b>
+		<div class="mb-2"><input type="checkbox" id="toggleStops" checked> <b>Show all stops</b></div>
+        <hr><div id="routeList"></div>
+    </div>
+    <div id="map">
+        <div class="map-controls">
+            <button onclick="setLayer('light')">Light</button>
+            <button onclick="setLayer('dark')">Dark</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const map = L.map('map', {zoomControl: false, attributionControl: false}).setView([47.92, 106.91], 12);
+    const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+    const light = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+
+    function setLayer(mode) {
+        mode === 'dark' ? (map.removeLayer(light), dark.addTo(map)) : (map.removeLayer(dark), light.addTo(map));
+    }
+	
+	document.getElementById('toggleStops').addEventListener('change', function() {
+    if (this.checked) {
+        if (!map.hasLayer(stopsLayer)) {
+            map.addLayer(stopsLayer);
+        }
+    } else {
+        if (map.hasLayer(stopsLayer)) {
+            map.removeLayer(stopsLayer);
+        }
+    }
+});
+
+    let routeLayers = {};
+    const stopsLayer = L.layerGroup().addTo(map);
+    const routesLayer = L.layerGroup().addTo(map);
+
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        document.getElementById('importBtnLabel').textContent = file.name;
+        const statusEl = document.getElementById('gtfsStatus');
+        statusEl.textContent = 'Уншиж байна...';
+        statusEl.className = '';
+
+        const zip = await JSZip.loadAsync(file);
+        const routes = Papa.parse(await zip.file("routes.txt").async("string"), {header: true}).data;
+        const trips = Papa.parse(await zip.file("trips.txt").async("string"), {header: true}).data;
+        const shapesRaw = Papa.parse(await zip.file("shapes.txt").async("string"), {header: true}).data;
+        const stops = Papa.parse(await zip.file("stops.txt").async("string"), {header: true}).data;
+
+        // Шинэ файл орох бүрд бүх зүйлийг цэвэрлэх
+        stopsLayer.clearLayers();
+        routesLayer.clearLayers();
+        let bounds = L.latLngBounds();
+
+        // 1. Зогсоолууд нэмэх ба Bounds-д нэмэх
+        stops.forEach(s => {
+            if(s.stop_lat) {
+                const latLng = [s.stop_lat, s.stop_lon];
+                L.circleMarker(latLng, {radius: 1, color: '#ffffff', fillOpacity: 0.5})
+                 .bindPopup("Зогсоол: " + s.stop_name)
+                 .addTo(stopsLayer);
+                bounds.extend(latLng);
+            }
+        });
+
+        // 2. Чиглэлүүд нэмэх
+        const shapes = {};
+        shapesRaw.forEach(p => {
+            if(!shapes[p.shape_id]) shapes[p.shape_id] = [];
+            shapes[p.shape_id].push([parseFloat(p.shape_pt_lat), parseFloat(p.shape_pt_lon)]);
+        });
+
+        const listDiv = document.getElementById('routeList');
+        listDiv.innerHTML = "";
+        
+        routes.forEach(r => {
+            const trip = trips.find(t => t.route_id === r.route_id);
+            if (trip && shapes[trip.shape_id]) {
+                const color = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+                const poly = L.polyline(shapes[trip.shape_id], {color: color, weight: 1})
+                              .bindTooltip("Чиглэл: " + (r.route_long_name || r.route_short_name))
+                              .addTo(routesLayer);
+                
+                routeLayers[r.route_id] = poly;
+                bounds.extend(poly.getBounds()); // Bounds-д чиглэлийн цэгүүдийг нэмэх
+
+                listDiv.innerHTML += `<div><input type="checkbox" class="route-check" value="${r.route_id}" checked> <span style="color:${color}">${r.route_short_name || r.route_id}</span></div>`;
+            }
+        });
+
+        // АМЖИЛТТАЙ УНШСАНЫ ДАРАА БАЙРШИЛ РУУ ОЧИХ
+        if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [50, 50] });
+        }
+
+        statusEl.textContent = `✅ ${Object.keys(routeLayers).length} маршрут, ${stops.length} зогсоол`;
+        statusEl.className = 'ok';
+    });
+
+    document.getElementById('selectAll').addEventListener('change', (e) => {
+        document.querySelectorAll('.route-check').forEach(cb => { cb.checked = e.target.checked; toggleRoute(cb.value, cb.checked); });
+    });
+
+    document.addEventListener('change', (e) => {
+        if(e.target.classList.contains('route-check')) toggleRoute(e.target.value, e.target.checked);
+    });
+
+    function toggleRoute(id, visible) {
+        visible ? routeLayers[id].addTo(map) : map.removeLayer(routeLayers[id]);
+    }
+</script>
+</body>
+</html>
