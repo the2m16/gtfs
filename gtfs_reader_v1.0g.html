@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTFS Reader v1.0g</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #79a6d2;
+            --text-color: #e0e0e0;
+            --border-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        #fileInput { margin-bottom: 10px; color: var(--text-color); }
+        #zipName { color: var(--primary-color); margin-bottom: 10px; }
+
+        #nav-bar { 
+            display: flex; 
+            gap: 10px; 
+            flex-wrap: wrap; 
+            margin-top: 10px; 
+            border-bottom: 1px solid var(--border-color); 
+            padding-bottom: 10px; 
+        }
+
+        .nav-item { 
+            cursor: pointer; 
+            padding: 8px 16px; 
+            background: var(--surface-color); 
+            border: 1px solid var(--border-color);
+            border-radius: 4px; 
+            transition: 0.3s;
+        }
+
+        /* Заавал байх файлын стиль (Цэнхэр) */
+        .nav-item.required {
+            border: 1px solid var(--primary-color);
+            background-color: rgba(121, 166, 210, 0.15);
+        }
+        .nav-item.required:hover { background: var(--primary-color); color: #000; }
+
+        /* Shapes файлын стиль (Шар) */
+        .nav-item.shapes {
+            border: 1px solid #f1c40f;
+            background-color: rgba(121, 166, 210, 0.15);
+        }
+        .nav-item.shapes:hover { background: #f1c40f; color: #000; }
+
+        /* Байж болох файлын стиль (Саарал) */
+        .nav-item.optional {
+            border: 1px solid #444;
+            color: #aaa;
+        }
+        .nav-item.optional:hover { background: #333; color: #fff; }
+        
+        h2 { margin: 5px; font-size: 22px; font-weight: 500; }
+        #info-bar { margin: 5px 0; font-size: 1.0rem; color: #aaa; font-style: italic; }
+
+        #table-container { 
+            margin-top: 10px; 
+            overflow: auto; 
+            max-height: calc(100vh - 200px);
+        }
+
+        table { 
+            border-collapse: collapse;
+            border-spacing: 0;
+            width: 100%; 
+            background: var(--surface-color);
+            border-radius: 4px;
+        }
+        
+        thead th { 
+            position: sticky; 
+            top: -1px; 
+            background-color: #2c2c2c;
+            color: var(--primary-color);
+            z-index: 10;
+            border-bottom: 1px solid var(--primary-color);
+            padding: 10px;
+            text-align: left;
+            background-clip: padding-box;
+        }
+
+        th, td { border: 1px solid var(--border-color); padding: 4px 10px; text-align: left; }
+        tr:nth-child(even) { background-color: #252525; }
+    </style>
+</head>
+<body>
+
+    <input type="file" id="fileInput" accept=".zip" />
+    <h2 id="zipName"></h2>
+    <div id="nav-bar"></div>
+    <div id="info-bar"></div>
+    <div id="table-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const navBar = document.getElementById('nav-bar');
+        const tableContainer = document.getElementById('table-container');
+        const infoBar = document.getElementById('info-bar');
+        const zipNameDisplay = document.getElementById('zipName');
+        let zipData = {};
+
+        const requiredFiles = [
+            'agency.txt', 'stops.txt', 'routes.txt', 
+            'trips.txt', 'stop_times.txt', 'calendar.txt'
+        ];
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            zipNameDisplay.innerText = file.name;
+            const zip = await JSZip.loadAsync(file);
+            navBar.innerHTML = '';
+            infoBar.innerHTML = '';
+            tableContainer.innerHTML = '';
+            zipData = {};
+
+            zip.forEach((relativePath, zipEntry) => {
+                if (zipEntry.name.endsWith('.txt')) {
+                    zipData[zipEntry.name] = zipEntry;
+                    
+                    const btn = document.createElement('div');
+                    btn.className = 'nav-item';
+                    
+                    // Ангилал тогтоох логик
+                    if (zipEntry.name === 'shapes.txt') {
+                        btn.classList.add('shapes');
+                    } else if (requiredFiles.includes(zipEntry.name)) {
+                        btn.classList.add('required');
+                    } else {
+                        btn.classList.add('optional');
+                    }
+                    
+                    btn.innerText = zipEntry.name.replace('.txt', '');
+                    btn.onclick = () => renderTable(zipEntry.name);
+                    navBar.appendChild(btn);
+                }
+            });
+        });
+
+        async function renderTable(fileName) {
+            const content = await zipData[fileName].async('string');
+            const data = Papa.parse(content, { header: true, skipEmptyLines: true });
+            
+            if (data.data.length === 0) return;
+
+            const columns = Object.keys(data.data[0]);
+            const rowCount = data.data.length;
+            infoBar.innerText = `${fileName} · ${columns.length} багана · ${rowCount} мөр`;
+
+            let html = '<table><thead><tr>';
+            columns.forEach(key => html += `<th>${key}</th>`);
+            html += '</tr></thead><tbody>';
+            
+            data.data.forEach(row => {
+                html += '<tr>';
+                Object.values(row).forEach(val => html += `<td>${val}</td>`);
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            tableContainer.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
