@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GTFS Creator v2.1c</title>
+<title>GTFS Creator v2.2c</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root {
@@ -181,7 +181,7 @@
 <body>
 
 <div class="header">
-  <h1>GTFS Creator v2.1c</h1>
+  <h1>GTFS Creator v2.2c</h1>
   <p>GTFS Schedule стандартын дагуу нийтийн тээврийн үйлчилгээний өгөгдлийг бүтцэлж, баталгаажуулж, zip форматаар экспортлоно.</p>
   <p><strong style="color:#f25a5a">Улаан</strong> = Required, <strong style="color:#f5a623">Шар</strong> = Conditionally Required, <strong style="color:#8b90a8">Саарал</strong> = Optional. Foreign ID уялдаа, Field type шаардлагуудыг автоматаар хянана.
   </p>
@@ -651,7 +651,7 @@ function buildTabs() {
   exp.onclick = () => switchTab('export');
   bar.appendChild(exp);
 
-  // Import ZIP button (not a tab, triggers file picker directly)
+  // Import ZIP button
   const imp = document.createElement('button');
   imp.className = 'tab-btn';
   imp.style.cssText = 'color:var(--accent);border:1px solid var(--border);border-bottom:none;position:relative;top:1px';
@@ -659,6 +659,15 @@ function buildTabs() {
   imp.title = 'GTFS ZIP файл оруулах';
   imp.onclick = () => importGTFSZip();
   bar.appendChild(imp);
+
+  // Import URL button
+  const impUrl = document.createElement('button');
+  impUrl.className = 'tab-btn';
+  impUrl.style.cssText = 'color:var(--accent);border:1px solid var(--border);border-bottom:none;position:relative;top:1px';
+  impUrl.innerHTML = '🔗 Import URL';
+  impUrl.title = 'MobilityDatabase URL-ээр GTFS ZIP татаж оруулах';
+  impUrl.onclick = () => importGTFSFromUrl();
+  bar.appendChild(impUrl);
 }
 
 function switchTab(id) {
@@ -1291,7 +1300,159 @@ function importGTFSZip() {
   inp.click();
 }
 
-// RFC 4180 compliant CSV line parser
+async function importGTFSFromUrl() {
+  // Show URL input modal
+  showUrlModal(async (url) => {
+    if (!url) return;
+    url = url.trim();
+    if (!url.startsWith('http')) return toast('Зөв URL оруулна уу (https://...)', 'err');
+
+    toast('zip файлыг татаж байна...', 'inf');
+
+    let blob;
+    const proxies = [
+      url, // шууд
+      `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      `https://cors-anywhere.herokuapp.com/${url}`,
+    ];
+
+    let lastErr = '';
+    for (const proxyUrl of proxies) {
+      try {
+        const res = await fetch(proxyUrl, { headers: { 'Accept': '*/*' } });
+        if (!res.ok) { lastErr = `HTTP ${res.status} (${proxyUrl.substring(0,40)}...)`; continue; }
+        const ct = res.headers.get('content-type') || '';
+        // Accept zip, octet-stream, or unknown content types
+        if (ct.includes('text/html') && !ct.includes('zip')) {
+          lastErr = `HTML хариу ирлээ — энэ нь шууд файлын URL биш байж болзошгүй`; continue;
+        }
+        blob = await res.blob();
+        if (blob.size < 100) { lastErr = `Файл хэт жижиг (${blob.size} байт)`; blob = null; continue; }
+        break;
+      } catch (e) { lastErr = e.message; }
+    }
+
+    if (!blob) {
+      toast(`Татахад алдаа гарлаа: ${lastErr}. Файлыг гараар татаж Import товч ашиглана уу.`, 'err');
+      return;
+    }
+
+    toast('zip файлыг задлаж байна...', 'inf');
+
+    try {
+      const zip = await JSZip.loadAsync(blob);
+      let loaded = 0, skipped = 0;
+
+      const fileMap = {};
+      GTFS_FILES.forEach(f => { fileMap[f.name] = f; });
+
+      const tasks = [];
+      zip.forEach((relPath, zipEntry) => {
+        const fname = relPath.split('/').pop();
+        if (!fileMap[fname]) { skipped++; return; }
+        tasks.push(
+          zipEntry.async('string').then(csv => {
+            const fileDef = fileMap[fname];
+            const lines = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+            if (lines.length < 1) return;
+            const headerLine = lines[0].replace(/^\uFEFF/, '');
+            const headers = parseCSVLine(headerLine);
+            const rows = lines.slice(1).map(line => {
+              const vals = parseCSVLine(line);
+              const obj = {};
+              headers.forEach((h, i) => { obj[h.trim()] = (vals[i] || '').trim(); });
+              return obj;
+            }).filter(r => Object.values(r).some(v => v !== ''));
+            state[fileDef.id] = rows;
+            loaded++;
+          })
+        );
+      });
+
+      await Promise.all(tasks);
+
+      GTFS_FILES.forEach(f => {
+        if (state[f.id].length > 0) {
+          renderTable(f.id);
+          updateValBar(f.id);
+        }
+      });
+      updateDataSummary();
+
+      if (loaded === 0) return toast('GTFS файл олдсонгүй. URL зөв эсэхийг шалгана уу.', 'err');
+      toast('zip файл амжилттай ачаалагдлаа.', 'ok');
+
+      const firstLoaded = GTFS_FILES.find(f => state[f.id].length > 0);
+      if (firstLoaded) switchTab(firstLoaded.id);
+
+    } catch (err) {
+      console.error(err);
+      toast('ZIP задлахад алдаа гарлаа: ' + err.message, 'err');
+    }
+  });
+}
+
+function showUrlModal(onConfirm) {
+  // Remove existing url modal if any
+  const existing = document.getElementById('url-modal-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'url-modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:300;display:flex;align-items:center;justify-content:center';
+
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:90%;max-width:540px;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+      <h3 style="color:var(--accent);margin-bottom:8px;font-size:15px">🔗 GTFS ZIP URL оруулах</h3>
+      <p style="color:var(--text2);font-size:12px;margin-bottom:16px;line-height:1.6">
+        GTFS ZIP файлын шууд URL-г оруулна уу. MobilityDatabase, GitHub, агентлагийн сайт гэх мэт аль ч эх сурвалжаас байж болно.
+      </p>
+      <input id="url-modal-input" type="text" placeholder="https://storage.googleapis.com/storage/v1/..."
+        style="width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);
+        border-radius:6px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;margin-bottom:6px"
+        autocomplete="off" spellcheck="false">
+      <p id="url-modal-hint" style="font-size:11px;color:var(--text2);margin-bottom:16px;min-height:16px"></p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button id="url-modal-cancel" class="btn">Болих</button>
+        <button id="url-modal-ok" class="btn" style="background:#0e1e3a;border-color:var(--accent);color:var(--accent)">📥 Татаж авах</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const input  = document.getElementById('url-modal-input');
+  const hint   = document.getElementById('url-modal-hint');
+  const okBtn  = document.getElementById('url-modal-ok');
+  const cancel = document.getElementById('url-modal-cancel');
+
+  input.addEventListener('input', () => {
+    const v = input.value.trim();
+    if (!v) { hint.textContent = ''; return; }
+    if (!v.startsWith('http')) {
+      hint.style.color = 'var(--danger)';
+      hint.textContent = '⚠ https:// эхэлсэн URL байх ёстой';
+      return;
+    }
+    hint.style.color = 'var(--success)';
+    hint.textContent = '✓ URL бэлэн байна';
+  });
+
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') okBtn.click(); if (e.key === 'Escape') cancel.click(); });
+
+  const close = () => overlay.remove();
+  cancel.onclick = close;
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+  okBtn.onclick = () => {
+    const url = input.value.trim();
+    if (!url) { hint.style.color = 'var(--danger)'; hint.textContent = '⚠ URL оруулна уу'; return; }
+    close();
+    onConfirm(url);
+  };
+
+  setTimeout(() => input.focus(), 50);
+}
 function parseCSVLine(line) {
   const result = [];
   let cur = '', inQuote = false;
