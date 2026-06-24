@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GTFS Creator v2.1c</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #4f8ef7;
+    --accent2: #7c5cfc;
+    --success: #2dd4a0;
+    --warn: #f5a623;
+    --danger: #f25a5a;
+    --text: #e8eaf2;
+    --text2: #8b90a8;
+    --tab-h: 40px;
+    --font: 'Segoe UI', system-ui, sans-serif;
+    --mono: 'Consolas', 'SF Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; min-height: 100vh; }
+
+  /* HEADER */
+  .header { background: linear-gradient(135deg, #0f1117 0%, #1a1430 100%); border-bottom: 1px solid var(--border); padding: 22px 24px 18px; }
+  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; background: linear-gradient(90deg, #4f8ef7, #7c5cfc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .header p { color: var(--text2); font-size: 13px; margin-top: 6px; line-height: 1.1; max-width: 1000px; }
+
+  /* TAB BAR */
+  .tabbar-wrap { background: var(--surface); border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+  .tabbar-wrap::-webkit-scrollbar { display: none; }
+  .tabbar { display: flex; align-items: flex-end; padding: 0 12px; gap: 2px; min-width: max-content; }
+  .tab-btn {
+    height: var(--tab-h); padding: 0 14px; border: none; background: transparent;
+    color: var(--text2); font-size: 12px; font-family: var(--mono); cursor: pointer;
+    border-radius: 6px 6px 0 0; white-space: nowrap; border: 1px solid transparent;
+    border-bottom: none; transition: all 0.15s; position: relative; top: 1px;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--surface2); }
+  .tab-btn.active { background: var(--bg); color: var(--accent); border-color: var(--border); border-bottom-color: var(--bg); }
+  .tab-btn .req-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-left: 5px; vertical-align: middle; position: relative; top: -1px; }
+  .tab-btn .req-dot.r  { background: var(--danger); }
+  .tab-btn .req-dot.cr { background: var(--warn); }
+  .tab-btn .req-dot.o  { background: var(--text2); }
+  .tab-btn.export-tab  { color: var(--success); border: 1px solid var(--border); border-bottom: none; }
+  .tab-btn.export-tab:hover, .tab-btn.export-tab.active { background: #0e2a22; border-color: var(--success); border-bottom-color: var(--bg); color: var(--success); }
+
+  /* PANELS */
+  .panels { padding: 0; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* SPREADSHEET */
+  .sheet-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .sheet-toolbar .file-info { flex: 1; font-size: 12px; color: var(--text2); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--surface2);
+    color: var(--text); font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+  }
+  .btn:hover { background: var(--border); color: #fff; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #3a7de8; }
+  .btn.success { background: var(--success); border-color: var(--success); color: #000; }
+  .btn.danger  { background: transparent; border-color: var(--danger); color: var(--danger); }
+  .btn.danger:hover { background: var(--danger); color: #fff; }
+
+  .table-wrap { overflow: auto; max-height: calc(100vh - 220px - 44px); }
+  table { border-collapse: collapse; width: max-content; min-width: 100%; }
+  thead th {
+    position: sticky; top: 0; z-index: 10; background: var(--surface); padding: 7px 10px;
+    font-size: 11px; font-family: var(--mono); font-weight: 600; color: var(--text2);
+    border-right: 1px solid var(--border); border-bottom: 2px solid var(--border);
+    white-space: nowrap; user-select: none; cursor: default;
+  }
+  thead th .col-name { display: block; }
+  thead th .col-meta { display: block; font-size: 10px; font-weight: 400; opacity: 0.6; margin-top: 1px; }
+  thead th.req   { border-top: 2px solid var(--danger); }
+  thead th.cond  { border-top: 2px solid var(--warn); }
+  thead th.opt   { border-top: 2px solid var(--text2); }
+  thead th:first-child { width: 36px; min-width: 36px; background: var(--surface); z-index: 11; left: 0; }
+  tbody td {
+    border-right: 1px solid var(--border); border-bottom: 1px solid #1e2130;
+    padding: 0; height: 32px; vertical-align: middle;
+  }
+  tbody tr:hover td { background: #191d2e; }
+  tbody td:first-child {
+    text-align: center; font-size: 10px; color: var(--text2); background: var(--surface);
+    position: sticky; left: 0; z-index: 5; min-width: 36px;
+  }
+  tbody td input[type="text"], tbody td select {
+    width: 100%; height: 100%; padding: 4px 8px; background: transparent; border: none;
+    color: var(--text); font-family: var(--mono); font-size: 12px; outline: none;
+  }
+  tbody td input[type="text"]:focus { background: #1c2040; box-shadow: inset 0 0 0 1px var(--accent); }
+  tbody td select { cursor: pointer; }
+  tbody td select option { background: #1a1d27; }
+  tbody td.cell-error input, tbody td.cell-error select { box-shadow: inset 0 0 0 1px var(--danger); background: #2a0e0e; }
+  tbody td.cell-warn input, tbody td.cell-warn select  { box-shadow: inset 0 0 0 1px var(--warn); background: #2a1a00; }
+  tbody td .err-tip { display: none; position: absolute; z-index: 100; background: #2a0e0e; border: 1px solid var(--danger); border-radius: 4px; padding: 4px 8px; font-size: 11px; color: var(--danger); white-space: nowrap; }
+  .add-row-btn { margin: 10px 16px; }
+
+  /* STICKY BOTTOM BAR (товч + статус + copyright) */
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 490;
+    height: 44px; background: var(--surface); border-top: 1px solid var(--border);
+    display: none; align-items: center; gap: 10px; padding: 0 14px;
+    font-size: 11px; position: fixed;
+  }
+  .bottom-bar.active { display: flex; }
+  .bottom-bar .bb-btns { display: flex; gap: 6px; flex-shrink: 0; }
+  .bottom-bar .bb-status { display: flex; gap: 14px; flex: 1; flex-wrap: nowrap; overflow: hidden; }
+  .bottom-bar .v-ok   { color: var(--success); white-space: nowrap; }
+  .bottom-bar .v-err  { color: var(--danger);  white-space: nowrap; }
+  .bottom-bar .v-warn { color: var(--warn);    white-space: nowrap; }
+  .bottom-bar .v-cnt  { color: var(--text2);   white-space: nowrap; }
+  .bottom-bar .bb-copy { position: absolute; left: 50%; transform: translateX(-50%); color: var(--text2); opacity: 0.55; white-space: nowrap; font-size: 10px; pointer-events: none; }
+  /* hide old val-bar */
+  .val-bar { display: none; }
+
+  /* EXPORT PANEL */
+  .export-panel { padding: 24px; max-width: 900px; }
+  .export-section { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 18px; }
+  .export-section h3 { font-size: 14px; color: var(--accent); margin-bottom: 14px; }
+  .export-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .export-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .export-row label { font-size: 12px; color: var(--text2); min-width: 120px; }
+  .export-row input[type="text"] {
+    flex: 1; min-width: 200px; padding: 7px 10px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text); font-size: 12px; font-family: var(--mono);
+  }
+  .export-row input[type="text"]:focus { outline: none; border-color: var(--accent); }
+  .send-btn {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+    padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface2); cursor: pointer; transition: all 0.15s; text-align: left;
+  }
+  .send-btn:hover { background: var(--border); border-color: var(--accent); }
+  .send-btn .sb-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .send-btn .sb-url  { font-size: 10px; color: var(--text2); font-family: var(--mono); }
+  .send-btn .sb-status { font-size: 10px; }
+  .send-btn .sb-status.sent { color: var(--success); }
+  .send-btn .sb-status.err  { color: var(--danger); }
+  .send-btn .sb-status.pending { color: var(--warn); }
+
+  /* LEGEND */
+  .legend { display: flex; gap: 14px; padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border); font-size: 11px; flex-wrap: wrap; }
+  .legend span { display: flex; align-items: center; gap: 4px; color: var(--text2); }
+  .legend .dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  /* MODAL */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 480px; width: 90%; }
+  .modal h3 { margin-bottom: 12px; color: var(--accent); }
+  .modal p  { color: var(--text2); font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
+  .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+
+  /* TOAST */
+  #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+  .toast { padding: 10px 16px; border-radius: 8px; font-size: 13px; color: #fff; animation: fadeIn 0.2s ease; max-width: 340px; }
+  .toast.ok  { background: #0e2a22; border: 1px solid var(--success); color: var(--success); }
+  .toast.err { background: #2a0e0e; border: 1px solid var(--danger);  color: var(--danger); }
+  .toast.inf { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+
+  @media (max-width: 600px) {
+    .header h1 { font-size: 18px; }
+    .sheet-toolbar { padding: 8px 10px; }
+    .export-panel { padding: 14px; }
+  }
+
+  /* FOOTER merged into bottom-bar */
+  body { padding-bottom: 44px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>GTFS Creator v2.1c</h1>
+  <p>GTFS Schedule стандартын дагуу нийтийн тээврийн үйлчилгээний өгөгдлийг бүтцэлж, баталгаажуулж, zip форматаар экспортлоно.</p>
+  <p><strong style="color:#f25a5a">Улаан</strong> = Required, <strong style="color:#f5a623">Шар</strong> = Conditionally Required, <strong style="color:#8b90a8">Саарал</strong> = Optional. Foreign ID уялдаа, Field type шаардлагуудыг автоматаар хянана.
+  </p>
+</div>
+
+<div class="tabbar-wrap">
+  <div class="tabbar" id="tabbar"></div>
+</div>
+
+<div class="panels" id="panels"></div>
+
+<div id="toast-container"></div>
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <h3 id="modal-title">Баталгаажуулах</h3>
+    <p id="modal-body"></p>
+    <div class="modal-btns">
+      <button class="btn" id="modal-cancel">Болих</button>
+      <button class="btn primary" id="modal-ok">Тийм</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── GTFS SCHEMA ─────────────────────────────────────────────────────────────
+const GTFS_FILES = [
+  {
+    id: 'agency', name: 'agency.txt', presence: 'required',
+    desc: 'Байгууллагын мэдээлэл (Transit agencies with service represented in this dataset.)',
+    fields: [
+      { name: 'agency_id',       type: 'ID',       presence: 'cond_req', desc: 'Байгууллагын ID' },
+      { name: 'agency_name',     type: 'Text',     presence: 'required', desc: 'Байгууллагын нэр' },
+      { name: 'agency_url',      type: 'URL',      presence: 'required', desc: 'Вэб хаяг' },
+      { name: 'agency_timezone', type: 'Timezone', presence: 'required', desc: 'Цагийн бүс (Asia/Ulaanbaatar)' },
+      { name: 'agency_lang',     type: 'Language', presence: 'optional', desc: 'Үндсэн хэл (mn, en)' },
+      { name: 'agency_phone',    type: 'Phone',    presence: 'optional', desc: 'Утасны дугаар' },
+      { name: 'agency_fare_url', type: 'URL',      presence: 'optional', desc: 'Тариф мэдээллийн хаяг' },
+      { name: 'agency_email',    type: 'Email',    presence: 'optional', desc: 'Имэйл хаяг' },
+      { name: 'cemv_support',    type: 'Enum',     presence: 'optional', desc: 'cEMV дэмжлэг',
+        enumValues: ['','0','1','2'], enumLabels: ['—','0: Мэдээлэлгүй','1: Дэмжинэ','2: Дэмжихгүй'] },
+    ]
+  },
+  {
+    id: 'stops', name: 'stops.txt', presence: 'cond_req',
+    desc: 'Зогсоолын мэдээлэл (Stops where vehicles pick up or drop off riders. Also defines stations and station entrances.)',
+    fields: [
+      { name: 'stop_id',             type: 'UniqueID',  presence: 'required',  desc: 'Зогсоолын өвөрмөц ID' },
+      { name: 'stop_code',           type: 'Text',      presence: 'optional',  desc: 'Зогсоолын код' },
+      { name: 'stop_name',           type: 'Text',      presence: 'cond_req',  desc: 'Зогсоолын нэр' },
+      { name: 'tts_stop_name',       type: 'Text',      presence: 'optional',  desc: 'Дуу хоолойн нэр' },
+      { name: 'stop_desc',           type: 'Text',      presence: 'optional',  desc: 'Тайлбар' },
+      { name: 'stop_lat',            type: 'Latitude',  presence: 'cond_req',  desc: 'Өргөрөг (-90~90)' },
+      { name: 'stop_lon',            type: 'Longitude', presence: 'cond_req',  desc: 'Уртраг (-180~180)' },
+      { name: 'zone_id',             type: 'ID',        presence: 'optional',  desc: 'Тариф бүсийн ID' },
+      { name: 'stop_url',            type: 'URL',       presence: 'optional',  desc: 'Вэб хаяг' },
+      { name: 'location_type',       type: 'Enum',      presence: 'optional',  desc: 'Байршлын төрөл',
+        enumValues: ['','0','1','2','3','4'], enumLabels: ['—','0: Зогсоол','1: Буудал','2: Орц/Гарц','3: Node','4: Тавцан'] },
+      { name: 'parent_station',      type: 'ForeignID', presence: 'cond_req',  desc: 'Эцэг буудлын ID', foreignFile: 'stops', foreignField: 'stop_id' },
+      { name: 'stop_timezone',       type: 'Timezone',  presence: 'optional',  desc: 'Цагийн бүс' },
+      { name: 'wheelchair_boarding', type: 'Enum',      presence: 'optional',  desc: 'Хөгжлийн бэрхшээлтэй хүний нэвтрэлт',
+        enumValues: ['','0','1','2'], enumLabels: ['—','0: Мэдээлэлгүй','1: Боломжтой','2: Боломжгүй'] },
+      { name: 'level_id',            type: 'ForeignID', presence: 'optional',  desc: 'Давхрын ID', foreignFile: 'levels', foreignField: 'level_id' },
+      { name: 'platform_code',       type: 'Text',      presence: 'optional',  desc: 'Тавцангийн код' },
+    ]
+  },
+  {
+    id: 'routes', name: 'routes.txt', presence: 'required',
+    desc: 'Чиглэлийн мэдээлэл (Transit routes. A route is a group of trips that are displayed to riders as a single service.)',
+    fields: [
+      { name: 'route_id',         type: 'UniqueID',  presence: 'required',  desc: 'Чиглэлийн өвөрмөц ID' },
+      { name: 'agency_id',        type: 'ForeignID', presence: 'cond_req',  desc: 'Байгууллагын ID', foreignFile: 'agency', foreignField: 'agency_id' },
+      { name: 'route_short_name', type: 'Text',      presence: 'cond_req',  desc: 'Богино нэр (32, 100X)' },
+      { name: 'route_long_name',  type: 'Text',      presence: 'cond_req',  desc: 'Дэлгэрэнгүй нэр' },
+      { name: 'route_desc',       type: 'Text',      presence: 'optional',  desc: 'Тайлбар' },
+      { name: 'route_type',       type: 'Enum',      presence: 'required',  desc: 'Тээврийн төрөл',
+        enumValues: ['0','1','2','3','4','5','6','7','11','12'],
+        enumLabels: ['0: Трамвай','1: Метро','2: Галт тэрэг','3: Автобус','4: Усан тээвэр','5: Кабелийн трамвай','6: Агаарын тэрэг','7: Фуникюлер','11: Троллейбус','12: Монорайл'] },
+      { name: 'route_url',        type: 'URL',       presence: 'optional',  desc: 'Чиглэлийн вэб хаяг' },
+      { name: 'route_color',      type: 'Color',     presence: 'optional',  desc: 'Өнгийн hex код (FF0000)' },
+      { name: 'route_text_color', type: 'Color',     presence: 'optional',  desc: 'Текстийн өнгө' },
+      { name: 'route_sort_order', type: 'Integer',   presence: 'optional',  desc: 'Эрэмбийн дараалал' },
+      { name: 'continuous_pickup',  type: 'Enum',    presence: 'optional',  desc: 'Тасралтгүй суулт',
+        enumValues: ['','0','1','2','3'], enumLabels: ['—','0: Тасралтгүй','1: Үгүй','2: Телефонор','3: Жолоочоос'] },
+      { name: 'continuous_drop_off', type: 'Enum',   presence: 'optional',  desc: 'Тасралтгүй буулт',
+        enumValues: ['','0','1','2','3'], enumLabels: ['—','0: Тасралтгүй','1: Үгүй','2: Телефонор','3: Жолоочоос'] },
+      { name: 'network_id',       type: 'ID',        presence: 'optional',  desc: 'Сүлжээний ID' },
+    ]
+  },
+  {
+    id: 'trips', name: 'trips.txt', presence: 'required',
+    desc: 'Аяллын мэдээлэл (Trips for each route. A trip is a sequence of two or more stops that occur during a specific time period.)',
+    fields: [
+      { name: 'route_id',             type: 'ForeignID', presence: 'required',  desc: 'Чиглэлийн ID', foreignFile: 'routes', foreignField: 'route_id' },
+      { name: 'service_id',           type: 'ForeignID', presence: 'required',  desc: 'Үйлчилгээний ID', foreignFile: 'calendar', foreignField: 'service_id' },
+      { name: 'trip_id',              type: 'UniqueID',  presence: 'required',  desc: 'Аяллын өвөрмөц ID' },
+      { name: 'trip_headsign',        type: 'Text',      presence: 'optional',  desc: 'Тэргний зарлал' },
+      { name: 'trip_short_name',      type: 'Text',      presence: 'optional',  desc: 'Аяллын богино нэр' },
+      { name: 'direction_id',         type: 'Enum',      presence: 'optional',  desc: 'Чиглэл',
+        enumValues: ['','0','1'], enumLabels: ['—','0: Явах','1: Буцах'] },
+      { name: 'block_id',             type: 'ID',        presence: 'optional',  desc: 'Блокийн ID' },
+      { name: 'shape_id',             type: 'ForeignID', presence: 'optional',  desc: 'Замын зургийн ID', foreignFile: 'shapes', foreignField: 'shape_id' },
+      { name: 'wheelchair_accessible', type: 'Enum',     presence: 'optional',  desc: 'Тэргэнцэртэй нийцэмж',
+        enumValues: ['','0','1','2'], enumLabels: ['—','0: Мэдээлэлгүй','1: Боломжтой','2: Боломжгүй'] },
+      { name: 'bikes_allowed',        type: 'Enum',      presence: 'optional',  desc: 'Дугуй зөвшөөрөл',
+        enumValues: ['','0','1','2'], enumLabels: ['—','0: Мэдээлэлгүй','1: Боломжтой','2: Боломжгүй'] },
+    ]
+  },
+  {
+    id: 'stop_times', name: 'stop_times.txt', presence: 'required',
+    desc: 'Зогсоолын цагийн хуваарь (Times that a vehicle arrives at and departs from stops for each trip.)',
+    fields: [
+      { name: 'trip_id',            type: 'ForeignID', presence: 'required',  desc: 'Аяллын ID', foreignFile: 'trips', foreignField: 'trip_id' },
+      { name: 'arrival_time',       type: 'Time',      presence: 'cond_req',  desc: 'Ирэх цаг (HH:MM:SS)' },
+      { name: 'departure_time',     type: 'Time',      presence: 'cond_req',  desc: 'Явах цаг (HH:MM:SS)' },
+      { name: 'stop_id',            type: 'ForeignID', presence: 'cond_req',  desc: 'Зогсоолын ID', foreignFile: 'stops', foreignField: 'stop_id' },
+      { name: 'location_group_id',  type: 'ForeignID', presence: 'optional',  desc: 'Байршлын бүлгийн ID', foreignFile: 'location_groups', foreignField: 'location_group_id' },
+      { name: 'stop_sequence',      type: 'Integer',   presence: 'required',  desc: 'Зогсоолын дараалал (эерэг)' },
+      { name: 'stop_headsign',      type: 'Text',      presence: 'optional',  desc: 'Зогсоол дахь зарлал' },
+      { name: 'start_pickup_drop_off_window', type: 'Time', presence: 'optional', desc: 'Эхлэх цонх' },
+      { name: 'end_pickup_drop_off_window',   type: 'Time', presence: 'optional', desc: 'Дуусах цонх' },
+      { name: 'pickup_type',        type: 'Enum',      presence: 'optional',  desc: 'Суултын төрөл',
+        enumValues: ['','0','1','2','3'], enumLabels: ['—','0: Ердийн','1: Суулт байхгүй','2: Утсаар','3: Жолоочоос'] },
+      { name: 'drop_off_type',      type: 'Enum',      presence: 'optional',  desc: 'Буултын төрөл',
+        enumValues: ['','0','1','2','3'], enumLabels: ['—','0: Ердийн','1: Буулт байхгүй','2: Утсаар','3: Жолоочоос'] },
+      { name: 'continuous_pickup',  type: 'Enum',      presence: 'optional',  desc: 'Тасралтгүй суулт',
+        enumValues: ['','0','1','2','3'], enumLabels: ['—','0: Тасралтгүй','1: Үгүй','2: Утсаар','3: Жолоочоос'] },
+      { name: 'continuous_drop_off', type: 'Enum',     presence: 'optional',  desc: 'Тасралтгүй буулт',
+        enumValues: ['','0','1','2','3'], enumLabels: ['—','0: Тасралтгүй','1: Үгүй','2: Утсаар','3: Жолоочоос'] },
+      { name: 'shape_dist_traveled', type: 'Float',    presence: 'optional',  desc: 'Замын зай' },
+      { name: 'timepoint',          type: 'Enum',      presence: 'optional',  desc: 'Цагийн нарийвчлал',
+        enumValues: ['','0','1'], enumLabels: ['—','0: Ойролцоо','1: Нарийн'] },
+    ]
+  },
+  {
+    id: 'shapes', name: 'shapes.txt', presence: 'optional',
+    desc: 'Чиглэлийн аялах зам (Shapes describe the path that a vehicle travels along a route alignment. Shapes are associated with Trips, and consist of a sequence of points through which the vehicle passes in order. Shapes do not need to intercept the location of Stops exactly, but all Stops on a trip should lie within a small distance of the shape for that trip, i.e. close to straight line segments connecting the shape points. The shapes.txt file should be included for all route-based services.)',
+    fields: [
+      { name: 'shape_id',            type: 'ID',        presence: 'required', desc: 'Замын ID' },
+      { name: 'shape_pt_lat',        type: 'Latitude',  presence: 'required', desc: 'Цэгийн өргөрөг' },
+      { name: 'shape_pt_lon',        type: 'Longitude', presence: 'required', desc: 'Цэгийн уртраг' },
+      { name: 'shape_pt_sequence',   type: 'Integer',   presence: 'required', desc: 'Цэгийн дараалал' },
+      { name: 'shape_dist_traveled', type: 'Float',     presence: 'optional', desc: 'Туулсан зай' },
+    ]
+  },
+  {
+    id: 'frequencies', name: 'frequencies.txt', presence: 'optional',
+    desc: 'Давтамж (Headway /time between trips/ for headway-based service or a compressed representation of fixed-schedule service.)',
+    fields: [
+      { name: 'trip_id',      type: 'ForeignID', presence: 'required', desc: 'Аяллын ID', foreignFile: 'trips', foreignField: 'trip_id' },
+      { name: 'start_time',   type: 'Time',      presence: 'required', desc: 'Эхлэх цаг' },
+      { name: 'end_time',     type: 'Time',      presence: 'required', desc: 'Дуусах цаг' },
+      { name: 'headway_secs', type: 'Integer',   presence: 'required', desc: 'Хоорондын хугацаа (сек)' },
+      { name: 'exact_times',  type: 'Enum',      presence: 'optional', desc: 'Нарийн цаг',
+        enumValues: ['','0','1'], enumLabels: ['—','0: Давтамж','1: Нарийн'] },
+    ]
+  },
+  {
+    id: 'translations', name: 'translations.txt', presence: 'optional',
+    desc: 'Файлын орчуулга (Translations of customer-facing dataset values.)',
+    fields: [
+      { name: 'table_name',   type: 'Enum',     presence: 'required', desc: 'Хүснэгтийн нэр',
+        enumValues: ['agency','stops','routes','trips','stop_times','feed_info','pathways','levels','booking_rules','attributions'],
+        enumLabels: ['agency','stops','routes','trips','stop_times','feed_info','pathways','levels','booking_rules','attributions'] },
+      { name: 'field_name',   type: 'Text',     presence: 'required', desc: 'Баганын нэр' },
+      { name: 'language',     type: 'Language', presence: 'required', desc: 'Хэл' },
+      { name: 'translation',  type: 'Text',     presence: 'required', desc: 'Орчуулга' },
+      { name: 'record_id',    type: 'ID',       presence: 'cond_req', desc: 'Бичлэгийн ID' },
+      { name: 'record_sub_id', type: 'ID',      presence: 'optional', desc: 'Дэд бичлэгийн ID' },
+      { name: 'field_value',  type: 'Text',     presence: 'optional', desc: 'Орлуулах утга' },
+    ]
+  },
+  {
+    id: 'calendar', name: 'calendar.txt', presence: 'cond_req',
+    desc: '7 хоногийн үйлчилгээний хуваарь (Service dates specified using a weekly schedule with start and end dates.)',
+    fields: [
+      { name: 'service_id',  type: 'UniqueID', presence: 'required', desc: 'Үйлчилгээний ID' },
+      { name: 'monday',      type: 'Enum',     presence: 'required', desc: 'Даваа',
+        enumValues: ['0','1'], enumLabels: ['0: Үгүй','1: Тийм'] },
+      { name: 'tuesday',     type: 'Enum',     presence: 'required', desc: 'Мягмар',
+        enumValues: ['0','1'], enumLabels: ['0: Үгүй','1: Тийм'] },
+      { name: 'wednesday',   type: 'Enum',     presence: 'required', desc: 'Лхагва',
+        enumValues: ['0','1'], enumLabels: ['0: Үгүй','1: Тийм'] },
+      { name: 'thursday',    type: 'Enum',     presence: 'required', desc: 'Пүрэв',
+        enumValues: ['0','1'], enumLabels: ['0: Үгүй','1: Тийм'] },
+      { name: 'friday',      type: 'Enum',     presence: 'required', desc: 'Баасан',
+        enumValues: ['0','1'], enumLabels: ['0: Үгүй','1: Тийм'] },
+      { name: 'saturday',    type: 'Enum',     presence: 'required', desc: 'Бямба',
+        enumValues: ['0','1'], enumLabels: ['0: Үгүй','1: Тийм'] },
+      { name: 'sunday',      type: 'Enum',     presence: 'required', desc: 'Ням',
+        enumValues: ['0','1'], enumLabels: ['0: Үгүй','1: Тийм'] },
+      { name: 'start_date',  type: 'Date',     presence: 'required', desc: 'Эхлэх огноо (YYYYMMDD)' },
+      { name: 'end_date',    type: 'Date',     presence: 'required', desc: 'Дуусах огноо (YYYYMMDD)' },
+    ]
+  },
+  {
+    id: 'calendar_dates', name: 'calendar_dates.txt', presence: 'cond_req',
+    desc: 'Хуваарийн үл хамаарах өдрүүд (Exceptions for the services defined in the calendar.txt.)',
+    fields: [
+      { name: 'service_id',     type: 'ForeignID', presence: 'required', desc: 'Үйлчилгээний ID', foreignFile: 'calendar', foreignField: 'service_id' },
+      { name: 'date',           type: 'Date',      presence: 'required', desc: 'Огноо (YYYYMMDD)' },
+      { name: 'exception_type', type: 'Enum',      presence: 'required', desc: 'Үл хамаарлын төрөл',
+        enumValues: ['1','2'], enumLabels: ['1: Нэмэгдсэн','2: Хасагдсан'] },
+    ]
+  },
+  {
+    id: 'fare_attributes', name: 'fare_attributes.txt', presence: 'optional',
+    desc: 'Үйлчилгээний үнэ, тарифийн мэдээлэл (Fare information for a transit agency routes.)',
+    fields: [
+      { name: 'fare_id',         type: 'UniqueID', presence: 'required', desc: 'Тарифийн ID' },
+      { name: 'price',           type: 'Float',    presence: 'required', desc: 'Үнэ' },
+      { name: 'currency_type',   type: 'Currency', presence: 'required', desc: 'Валют (MNT, USD)' },
+      { name: 'payment_method',  type: 'Enum',     presence: 'required', desc: 'Төлбөрийн арга',
+        enumValues: ['0','1'], enumLabels: ['0: Тэрэгт','1: Өмнө нь'] },
+      { name: 'transfers',       type: 'Enum',     presence: 'required', desc: 'Шилжилт тоо',
+        enumValues: ['','0','1','2'], enumLabels: ['—: Хязгааргүй','0: Шилжилтгүй','1: 1 удаа','2: 2 удаа'] },
+      { name: 'agency_id',       type: 'ForeignID', presence: 'cond_req', desc: 'Байгууллагын ID', foreignFile: 'agency', foreignField: 'agency_id' },
+      { name: 'transfer_duration', type: 'Integer', presence: 'optional', desc: 'Шилжилтийн хугацаа (сек)' },
+    ]
+  },
+  {
+    id: 'fare_rules', name: 'fare_rules.txt', presence: 'optional',
+    desc: 'Үнэ, тарифийн зохицуулалт (Rules to apply fares for itineraries.)',
+    fields: [
+      { name: 'fare_id',        type: 'ForeignID', presence: 'required', desc: 'Тарифийн ID', foreignFile: 'fare_attributes', foreignField: 'fare_id' },
+      { name: 'route_id',       type: 'ForeignID', presence: 'optional', desc: 'Чиглэлийн ID', foreignFile: 'routes', foreignField: 'route_id' },
+      { name: 'origin_id',      type: 'ID',        presence: 'optional', desc: 'Гарах бүсийн ID' },
+      { name: 'destination_id', type: 'ID',        presence: 'optional', desc: 'Очих бүсийн ID' },
+      { name: 'contains_id',    type: 'ID',        presence: 'optional', desc: 'Дундах бүсийн ID' },
+    ]
+  },
+  {
+    id: 'transfers', name: 'transfers.txt', presence: 'optional',
+    desc: 'Чиглэл хооронд холболтын зохицуулалт (Rules for making connections at transfer points between routes.)',
+    fields: [
+      { name: 'from_stop_id',   type: 'ForeignID', presence: 'optional', desc: 'Гарах зогсоол', foreignFile: 'stops', foreignField: 'stop_id' },
+      { name: 'to_stop_id',     type: 'ForeignID', presence: 'optional', desc: 'Очих зогсоол', foreignFile: 'stops', foreignField: 'stop_id' },
+      { name: 'from_route_id',  type: 'ForeignID', presence: 'optional', desc: 'Гарах чиглэл', foreignFile: 'routes', foreignField: 'route_id' },
+      { name: 'to_route_id',    type: 'ForeignID', presence: 'optional', desc: 'Очих чиглэл', foreignFile: 'routes', foreignField: 'route_id' },
+      { name: 'from_trip_id',   type: 'ForeignID', presence: 'optional', desc: 'Гарах аялал', foreignFile: 'trips', foreignField: 'trip_id' },
+      { name: 'to_trip_id',     type: 'ForeignID', presence: 'optional', desc: 'Очих аялал', foreignFile: 'trips', foreignField: 'trip_id' },
+      { name: 'transfer_type',  type: 'Enum',      presence: 'required', desc: 'Шилжилтийн төрөл',
+        enumValues: ['0','1','2','3','4','5'], enumLabels: ['0: Санал болгосон','1: Зохицуулалттай','2: Хамгийн бага цаг','3: Боломжгүй','4: Хоорондоо уялдаатай','5: Аяллын уялдаа'] },
+      { name: 'min_transfer_time', type: 'Integer', presence: 'optional', desc: 'Хамгийн бага хугацаа (сек)' },
+    ]
+  },
+  {
+    id: 'pathways', name: 'pathways.txt', presence: 'optional',
+    desc: 'Буудал доторх холболт (Pathways linking together locations within stations.)',
+    fields: [
+      { name: 'pathway_id',           type: 'UniqueID',  presence: 'required', desc: 'Замын ID' },
+      { name: 'from_stop_id',         type: 'ForeignID', presence: 'required', desc: 'Эхлэх цэг', foreignFile: 'stops', foreignField: 'stop_id' },
+      { name: 'to_stop_id',           type: 'ForeignID', presence: 'required', desc: 'Дуусах цэг', foreignFile: 'stops', foreignField: 'stop_id' },
+      { name: 'pathway_mode',         type: 'Enum',      presence: 'required', desc: 'Замын хэлбэр',
+        enumValues: ['1','2','3','4','5','6','7'], enumLabels: ['1: Явган','2: Шат','3: Хөдлөх хаалга','4: Хөдлөх шат','5: Лифт','6: Нэвтрэх хаалга','7: Бусад'] },
+      { name: 'is_bidirectional',     type: 'Enum',      presence: 'required', desc: 'Хоёр чиглэлт',
+        enumValues: ['0','1'], enumLabels: ['0: Нэг чиглэл','1: Хоёр чиглэл'] },
+      { name: 'length',               type: 'Float',     presence: 'optional', desc: 'Урт (метр)' },
+      { name: 'traversal_time',       type: 'Integer',   presence: 'optional', desc: 'Туулах хугацаа (сек)' },
+      { name: 'stair_count',          type: 'Integer',   presence: 'optional', desc: 'Шатны тоо' },
+      { name: 'max_slope',            type: 'Float',     presence: 'optional', desc: 'Хамгийн их налуу' },
+      { name: 'min_width',            type: 'Float',     presence: 'optional', desc: 'Хамгийн бага өргөн (метр)' },
+      { name: 'signposted_as',        type: 'Text',      presence: 'optional', desc: 'Заасан зам' },
+      { name: 'reversed_signposted_as', type: 'Text',   presence: 'optional', desc: 'Урвуу зам' },
+    ]
+  },
+  {
+    id: 'levels', name: 'levels.txt', presence: 'cond_req',
+    desc: 'Буудлын давхрууд (Levels within stations.)',
+    fields: [
+      { name: 'level_id',    type: 'UniqueID', presence: 'required', desc: 'Давхрын ID' },
+      { name: 'level_index', type: 'Float',    presence: 'required', desc: 'Давхрын индекс (0=газрын, 1=1р давхар)' },
+      { name: 'level_name',  type: 'Text',     presence: 'optional', desc: 'Давхрын нэр' },
+    ]
+  },
+  {
+    id: 'feed_info', name: 'feed_info.txt', presence: 'cond_req',
+    desc: 'Мэдээллийн сангийн мета (Dataset metadata, including publisher, version, and expiration information.)',
+    fields: [
+      { name: 'feed_publisher_name', type: 'Text', presence: 'required', desc: 'Нийтлэгчийн нэр' },
+      { name: 'feed_publisher_url',  type: 'URL',  presence: 'required', desc: 'Нийтлэгчийн хаяг' },
+      { name: 'feed_lang',           type: 'Language', presence: 'required', desc: 'Мэдээллийн хэл' },
+      { name: 'default_lang',        type: 'Language', presence: 'optional', desc: 'Үндсэн хэл' },
+      { name: 'feed_start_date',     type: 'Date',  presence: 'optional', desc: 'Эхлэх огноо (YYYYMMDD)' },
+      { name: 'feed_end_date',       type: 'Date',  presence: 'optional', desc: 'Дуусах огноо (YYYYMMDD)' },
+      { name: 'feed_version',        type: 'Text',  presence: 'optional', desc: 'Хувилбар' },
+      { name: 'feed_contact_email',  type: 'Email', presence: 'optional', desc: 'Холбоо барих имэйл' },
+      { name: 'feed_contact_url',    type: 'URL',   presence: 'optional', desc: 'Холбоо барих хаяг' },
+    ]
+  },
+  {
+    id: 'attributions', name: 'attributions.txt', presence: 'optional',
+    desc: 'Мэдээллийн эх сурвалж (Dataset attributions.)',
+    fields: [
+      { name: 'attribution_id',   type: 'UniqueID',  presence: 'optional',  desc: 'Эх сурвалжийн ID' },
+      { name: 'agency_id',        type: 'ForeignID', presence: 'optional',  desc: 'Байгууллагын ID', foreignFile: 'agency', foreignField: 'agency_id' },
+      { name: 'route_id',         type: 'ForeignID', presence: 'optional',  desc: 'Чиглэлийн ID', foreignFile: 'routes', foreignField: 'route_id' },
+      { name: 'trip_id',          type: 'ForeignID', presence: 'optional',  desc: 'Аяллын ID', foreignFile: 'trips', foreignField: 'trip_id' },
+      { name: 'organization_name', type: 'Text',     presence: 'required',  desc: 'Байгууллагын нэр' },
+      { name: 'is_producer',      type: 'Enum',      presence: 'optional',  desc: 'Үйлдвэрлэгч',
+        enumValues: ['','0','1'], enumLabels: ['—','0: Үгүй','1: Тийм'] },
+      { name: 'is_operator',      type: 'Enum',      presence: 'optional',  desc: 'Оператор',
+        enumValues: ['','0','1'], enumLabels: ['—','0: Үгүй','1: Тийм'] },
+      { name: 'is_authority',     type: 'Enum',      presence: 'optional',  desc: 'Эрх мэдэл',
+        enumValues: ['','0','1'], enumLabels: ['—','0: Үгүй','1: Тийм'] },
+      { name: 'attribution_url',  type: 'URL',       presence: 'optional',  desc: 'Эх сурвалжийн хаяг' },
+      { name: 'attribution_email', type: 'Email',    presence: 'optional',  desc: 'Имэйл' },
+      { name: 'attribution_phone', type: 'Phone',    presence: 'optional',  desc: 'Утас' },
+    ]
+  },
+  {
+    id: 'areas', name: 'areas.txt', presence: 'optional',
+    desc: 'Байршлыг бүлэглэх (Area grouping of locations.)',
+    fields: [
+      { name: 'area_id',   type: 'UniqueID', presence: 'required', desc: 'Бүсийн ID' },
+      { name: 'area_name', type: 'Text',     presence: 'optional', desc: 'Бүсийн нэр' },
+    ]
+  },
+  {
+    id: 'stop_areas', name: 'stop_areas.txt', presence: 'optional',
+    desc: 'Зогсоолыг бүсчлэх зохицуулалт (Rules to assign stops to areas.)',
+    fields: [
+      { name: 'area_id', type: 'ForeignID', presence: 'required', desc: 'Бүсийн ID', foreignFile: 'areas', foreignField: 'area_id' },
+      { name: 'stop_id', type: 'ForeignID', presence: 'required', desc: 'Зогсоолын ID', foreignFile: 'stops', foreignField: 'stop_id' },
+    ]
+  },
+  {
+    id: 'networks', name: 'networks.txt', presence: 'optional',
+    desc: 'Чиглэлийн сүлжээ (Network grouping of routes.)',
+    fields: [
+      { name: 'network_id',   type: 'UniqueID', presence: 'required', desc: 'Сүлжээний ID' },
+      { name: 'network_name', type: 'Text',     presence: 'optional', desc: 'Сүлжээний нэр' },
+    ]
+  },
+  {
+    id: 'route_networks', name: 'route_networks.txt', presence: 'optional',
+    desc: 'Чиглэлийг сүлжээнд оруулах зохицуулалт (Rules to assign routes to networks.)',
+    fields: [
+      { name: 'network_id', type: 'ForeignID', presence: 'required', desc: 'Сүлжээний ID', foreignFile: 'networks', foreignField: 'network_id' },
+      { name: 'route_id',   type: 'ForeignID', presence: 'required', desc: 'Чиглэлийн ID', foreignFile: 'routes', foreignField: 'route_id' },
+    ]
+  },
+  {
+    id: 'location_groups', name: 'location_groups.txt', presence: 'optional',
+    desc: 'Бүлэг зогсоол (A group of stops that together indicate locations where a rider may request pickup or drop off.)',
+    fields: [
+      { name: 'location_group_id',   type: 'UniqueID', presence: 'required', desc: 'Бүлгийн ID' },
+      { name: 'location_group_name', type: 'Text',     presence: 'optional', desc: 'Бүлгийн нэр' },
+    ]
+  },
+  {
+    id: 'booking_rules', name: 'booking_rules.txt', presence: 'optional',
+    desc: 'Захиалгын зохицуулалт (Booking information for rider-requested services.)',
+    fields: [
+      { name: 'booking_rule_id',   type: 'UniqueID', presence: 'required', desc: 'Захиалгын дүрмийн ID' },
+      { name: 'booking_type',      type: 'Enum',     presence: 'required', desc: 'Захиалгын төрөл',
+        enumValues: ['0','1','2'], enumLabels: ['0: Урьдчилан захиалгагүй','1: Өдрийн өмнөх өдөр хүртэл','2: Тодорхой хугацаанд'] },
+      { name: 'prior_notice_duration_min', type: 'Integer', presence: 'optional', desc: 'Хамгийн бага минут' },
+      { name: 'prior_notice_duration_max', type: 'Integer', presence: 'optional', desc: 'Хамгийн их минут' },
+      { name: 'prior_notice_last_day',     type: 'Integer', presence: 'optional', desc: 'Сүүлийн өдөр' },
+      { name: 'prior_notice_last_time',    type: 'Time',    presence: 'optional', desc: 'Сүүлийн цаг' },
+      { name: 'prior_notice_start_day',    type: 'Integer', presence: 'optional', desc: 'Эхлэх өдөр' },
+      { name: 'prior_notice_start_time',   type: 'Time',    presence: 'optional', desc: 'Эхлэх цаг' },
+      { name: 'prior_notice_service_id',   type: 'ForeignID', presence: 'optional', desc: 'Үйлчилгээний ID', foreignFile: 'calendar', foreignField: 'service_id' },
+      { name: 'message',             type: 'Text',    presence: 'optional', desc: 'Захиалгын мессеж' },
+      { name: 'pickup_message',      type: 'Text',    presence: 'optional', desc: 'Суултын мессеж' },
+      { name: 'drop_off_message',    type: 'Text',    presence: 'optional', desc: 'Буултын мессеж' },
+      { name: 'phone_number',        type: 'Phone',   presence: 'optional', desc: 'Захиалгын утас' },
+      { name: 'info_url',            type: 'URL',     presence: 'optional', desc: 'Мэдээллийн хаяг' },
+      { name: 'booking_url',         type: 'URL',     presence: 'optional', desc: 'Захиалгын хаяг' },
+    ]
+  },
+];
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+const state = {};
+GTFS_FILES.forEach(f => { state[f.id] = []; });
+let activeTab = 'agency';
+let exportFolder = './gtfs_exports';
+let githubRepo = '';
+
+// ── VALIDATORS ────────────────────────────────────────────────────────────────
+function validateCell(value, fieldDef, fileId) {
+  if (!value || value === '') {
+    if (fieldDef.presence === 'required') return { ok: false, msg: 'Заавал шаардлагатай' };
+    return { ok: true };
+  }
+  const v = value.trim();
+  switch (fieldDef.type) {
+    case 'Latitude': {
+      const n = parseFloat(v);
+      if (isNaN(n) || n < -90 || n > 90) return { ok: false, msg: 'WGS84 өргөрөг: -90.0 ~ 90.0' };
+      if (!/^-?\d+\.\d{6,}$/.test(v)) return { ok: false, msg: 'Таслалаас хойш 6+ орон шаардлагатай (жш: 47.908767)' };
+      break;
+    }
+    case 'Longitude': {
+      const n = parseFloat(v);
+      if (isNaN(n) || n < -180 || n > 180) return { ok: false, msg: 'WGS84 уртраг: -180.0 ~ 180.0' };
+      if (!/^-?\d+\.\d{6,}$/.test(v)) return { ok: false, msg: 'Таслалаас хойш 6+ орон шаардлагатай (жш: 106.883423)' };
+      break;
+    }
+    case 'Date':
+      if (!/^\d{8}$/.test(v)) return { ok: false, msg: 'Огноо: YYYYMMDD' };
+      break;
+    case 'Time':
+      if (!/^\d{1,2}:\d{2}:\d{2}$/.test(v)) return { ok: false, msg: 'Цаг: HH:MM:SS' };
+      break;
+    case 'URL':
+      if (!/^https?:\/\//.test(v)) return { ok: false, msg: 'URL: http(s)://' };
+      break;
+    case 'Email':
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return { ok: false, msg: 'Имэйл буруу' };
+      break;
+    case 'Color':
+      if (!/^[0-9A-Fa-f]{6}$/.test(v)) return { ok: false, msg: 'Hex өнгө: RRGGBB' };
+      break;
+    case 'Integer':
+      if (!/^-?\d+$/.test(v)) return { ok: false, msg: 'Бүтэн тоо' };
+      break;
+    case 'Float':
+      if (isNaN(parseFloat(v))) return { ok: false, msg: 'Тоон утга' };
+      break;
+    case 'Language':
+      if (!/^[a-z]{2,3}(-[A-Z]{2})?$/.test(v)) return { ok: false, msg: 'Хэлний код: mn, en-US' };
+      break;
+    case 'Timezone':
+      if (v.indexOf('/') < 0) return { ok: false, msg: 'Цагийн бүс: Asia/Ulaanbaatar' };
+      break;
+    case 'ForeignID': {
+      if (!fieldDef.foreignFile || !fieldDef.foreignField) break;
+      const fData = state[fieldDef.foreignFile];
+      if (!fData || fData.length === 0) return { ok: true, warn: true, msg: `${fieldDef.foreignFile}.txt хоосон` };
+      const vals = fData.map(r => r[fieldDef.foreignField]).filter(Boolean);
+      if (!vals.includes(v)) return { ok: false, msg: `"${v}" нь ${fieldDef.foreignFile}.txt-д байхгүй` };
+      break;
+    }
+  }
+  return { ok: true };
+}
+
+function getUniqueIDs(fileId, fieldName) {
+  return state[fileId].map(r => r[fieldName]).filter(Boolean);
+}
+
+// ── BUILD UI ──────────────────────────────────────────────────────────────────
+function presenceDot(p) {
+  if (p === 'required') return '<span class="req-dot r"></span>';
+  if (p === 'cond_req') return '<span class="req-dot cr"></span>';
+  return '<span class="req-dot o"></span>';
+}
+
+function buildTabs() {
+  const bar = document.getElementById('tabbar');
+  bar.innerHTML = '';
+  GTFS_FILES.forEach(f => {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (f.id === activeTab ? ' active' : '');
+    btn.dataset.tab = f.id;
+    btn.innerHTML = f.name + presenceDot(f.presence);
+    btn.onclick = () => switchTab(f.id);
+    bar.appendChild(btn);
+  });
+  // Export tab
+  const exp = document.createElement('button');
+  exp.className = 'tab-btn export-tab' + (activeTab === 'export' ? ' active' : '');
+  exp.dataset.tab = 'export';
+  exp.innerHTML = '📤 Export';
+  exp.onclick = () => switchTab('export');
+  bar.appendChild(exp);
+
+  // Import ZIP button (not a tab, triggers file picker directly)
+  const imp = document.createElement('button');
+  imp.className = 'tab-btn';
+  imp.style.cssText = 'color:var(--accent);border:1px solid var(--border);border-bottom:none;position:relative;top:1px';
+  imp.innerHTML = '📥 Import';
+  imp.title = 'GTFS ZIP файл оруулах';
+  imp.onclick = () => importGTFSZip();
+  bar.appendChild(imp);
+}
+
+function switchTab(id) {
+  activeTab = id;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.dataset.panel === id));
+  updateBottomBar(id);
+}
+
+function updateBottomBar(id) {
+  const bar = document.getElementById('bottom-bar');
+  const status = document.getElementById('bb-status');
+  if (!bar || !status) return;
+  const isSheet = GTFS_FILES.some(f => f.id === id);
+  if (isSheet) {
+    bar.classList.add('active');
+    syncBottomStatus(id);
+  } else {
+    bar.classList.remove('active');
+  }
+}
+
+function syncBottomStatus(fileId) {
+  const status = document.getElementById('bb-status');
+  if (!status) return;
+  const fileDef = GTFS_FILES.find(f => f.id === fileId);
+  if (!fileDef) return;
+  const rows = state[fileId];
+  let errs = 0, warns = 0;
+  rows.forEach(row => {
+    fileDef.fields.forEach(field => {
+      const vr = validateCell(row[field.name] || '', field, fileId);
+      if (!vr.ok) errs++;
+      else if (vr.warn) warns++;
+    });
+  });
+  status.innerHTML =
+    `<span class="v-cnt">Нийт мөр: <strong>${rows.length}</strong></span>` +
+    (errs  ? `<span class="v-err"> Алдаа: ${errs}</span>` : `<span class="v-ok"> Алдаа: 0</span>`) +
+    (warns ? `<span class="v-warn">⚠ Анхааруулга: ${warns}</span>` : '');
+}
+
+function bbAddRow() {
+  if (GTFS_FILES.some(f => f.id === activeTab)) addRow(activeTab);
+}
+function bbDeleteLastRow() {
+  if (GTFS_FILES.some(f => f.id === activeTab)) deleteLastRow(activeTab);
+}
+
+function buildPanels() {
+  const container = document.getElementById('panels');
+  container.innerHTML = '';
+
+  GTFS_FILES.forEach(f => {
+    const panel = document.createElement('div');
+    panel.className = 'panel' + (f.id === activeTab ? ' active' : '');
+    panel.dataset.panel = f.id;
+
+    panel.innerHTML = `
+      <div class="sheet-toolbar">
+        <span class="file-info"><strong>${f.name}</strong> — ${f.desc}</span>
+        <button class="btn" onclick="importCSV('${f.id}')">CSV импортлох</button>
+        <button class="btn danger" onclick="clearFile('${f.id}')">Бүх мөрийг устгах</button>
+      </div>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--danger)"></span>Required</span>
+        <span><span class="dot" style="background:var(--warn)"></span>Conditionally Required</span>
+        <span><span class="dot" style="background:var(--text2)"></span>Optional</span>
+        <span style="margin-left:auto;color:var(--text2);font-size:10px">✕ товч — мөрийн баруун захад</span>
+      </div>
+      <div class="table-wrap" id="table-wrap-${f.id}">
+        <table id="table-${f.id}"></table>
+      </div>
+      <div class="val-bar" id="val-bar-${f.id}"></div>
+    `;
+    container.appendChild(panel);
+    renderTable(f.id);
+  });
+
+  // Export panel
+  buildExportPanel(container);
+}
+
+// ── ID PREFIX HINTS per file ──────────────────────────────────────────────────
+const ID_HINTS = {
+  stops:  { field: 'stop_id',  prefix: 'S',      digits: 4, example: 'S0001' },
+  routes: { field: 'route_id', prefix: 'R',      digits: 3, example: 'R001' },
+  trips:  { field: 'trip_id',  prefix: 'T',      digits: 6, example: 'T000001' },
+};
+
+function getIdHint(fileId, fieldName) {
+  const h = ID_HINTS[fileId];
+  if (!h || h.field !== fieldName) return null;
+  const next = state[fileId].length + 1;
+  return h.prefix + String(next).padStart(h.digits, '0');
+}
+
+function renderTable(fileId) {
+  const fileDef = GTFS_FILES.find(f => f.id === fileId);
+  const table = document.getElementById('table-' + fileId);
+  if (!table) return;
+
+  // Header
+  let thead = '<thead><tr><th>#</th>';
+  fileDef.fields.forEach(field => {
+    const cls = field.presence === 'required' ? 'req' : field.presence === 'cond_req' ? 'cond' : 'opt';
+    thead += `<th class="${cls}"><span class="col-name">${field.name}</span><span class="col-meta">${field.type}</span></th>`;
+  });
+  thead += '<th style="width:36px;min-width:36px;position:sticky;right:0;background:var(--surface);z-index:12"></th></tr></thead>';
+
+  // Body
+  let tbody = '<tbody>';
+  const rows = state[fileId];
+  if (rows.length === 0) {
+    tbody += `<tr><td colspan="${fileDef.fields.length + 2}" style="text-align:center;padding:20px;color:var(--text2)">+ Мөр нэмэх товч дарна уу</td></tr>`;
+  } else {
+    rows.forEach((row, ri) => {
+      tbody += `<tr data-row="${ri}"><td>${ri + 1}</td>`;
+      fileDef.fields.forEach((field, fi) => {
+        const val = row[field.name] || '';
+        const vr = validateCell(val, field, fileId);
+        const cellCls = !vr.ok ? 'cell-error' : (vr.warn ? 'cell-warn' : '');
+        const hint = getIdHint(fileId, field.name);
+        tbody += `<td class="${cellCls}" data-row="${ri}" data-field="${field.name}" data-file="${fileId}" style="position:relative">`;
+        if (field.enumValues) {
+          tbody += `<select onchange="updateCell('${fileId}',${ri},'${field.name}',this.value)">`;
+          field.enumValues.forEach((ev, ei) => {
+            tbody += `<option value="${ev}"${ev === val ? ' selected' : ''}>${field.enumLabels ? field.enumLabels[ei] : ev}</option>`;
+          });
+          tbody += '</select>';
+        } else if (field.type === 'Color') {
+          tbody += `<input type="text" value="${val}" maxlength="6" placeholder="RRGGBB" style="width:80px"
+            onchange="updateCell('${fileId}',${ri},'${field.name}',this.value)"
+            oninput="updateCell('${fileId}',${ri},'${field.name}',this.value)">`;
+          if (val && val.length === 6) {
+            tbody += `<span style="display:inline-block;width:16px;height:16px;background:#${val};border-radius:2px;vertical-align:middle;margin-left:4px"></span>`;
+          }
+        } else {
+          const ph = hint ? `eg. ${hint}` : field.desc;
+          const blurAttr = (field.type === 'Latitude' || field.type === 'Longitude')
+            ? `onblur="if(this.value.trim()){const f=formatLatLon(this.value);if(f!==this.value){this.value=f;updateCell('${fileId}',${ri},'${field.name}',f)}}"`
+            : '';
+          tbody += `<input type="text" value="${escHtml(val)}" placeholder="${ph}" ${blurAttr}
+            onchange="updateCell('${fileId}',${ri},'${field.name}',this.value)"
+            oninput="updateCell('${fileId}',${ri},'${field.name}',this.value)"
+            onkeydown="handleCellKey(event,'${fileId}',${ri})">`;
+        }
+        tbody += '</td>';
+      });
+      tbody += `<td style="text-align:center;position:sticky;right:0;background:var(--surface);z-index:5">
+        <button onclick="deleteRow('${fileId}',${ri})" title="Мөр устгах"
+          style="background:transparent;border:none;color:#555;cursor:pointer;font-size:14px;padding:4px 6px;border-radius:4px;transition:all 0.15s"
+          onmouseover="this.style.color='var(--danger)';this.style.background='#2a0e0e'"
+          onmouseout="this.style.color='#555';this.style.background='transparent'">✕</button>
+      </td>`;
+      tbody += '</tr>';
+    });
+  }
+  tbody += '</tbody>';
+  table.innerHTML = thead + tbody;
+  updateValBar(fileId);
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function formatLatLon(value) {
+  const n = parseFloat(value);
+  if (isNaN(n)) return value;
+  // Ensure exactly 6 decimal places minimum, preserve more if already present
+  const parts = value.trim().split('.');
+  const decimals = parts[1] ? parts[1].length : 0;
+  return decimals >= 6 ? value.trim() : n.toFixed(6);
+}
+
+function updateCell(fileId, rowIdx, fieldName, value) {
+  if (!state[fileId][rowIdx]) state[fileId][rowIdx] = {};
+  const fileDef = GTFS_FILES.find(f => f.id === fileId);
+  const field = fileDef.fields.find(f => f.name === fieldName);
+
+  // Auto-format lat/lon to 6 decimal places on commit (change event)
+  // We detect "change" vs "input" by whether the input still has focus
+  let stored = value;
+  if ((field.type === 'Latitude' || field.type === 'Longitude') && value.trim() !== '') {
+    const formatted = formatLatLon(value);
+    if (formatted !== value) {
+      stored = formatted;
+      // Update the input element value too if it exists
+      const td = document.querySelector(`td[data-row="${rowIdx}"][data-field="${fieldName}"][data-file="${fileId}"]`);
+      if (td) {
+        const inp = td.querySelector('input');
+        if (inp && document.activeElement !== inp) inp.value = formatted;
+      }
+    }
+  }
+
+  state[fileId][rowIdx][fieldName] = stored;
+  // Re-render only the changed cell's validation state (soft refresh)
+  const vr = validateCell(stored, field, fileId);
+  const tdEl = document.querySelector(`td[data-row="${rowIdx}"][data-field="${fieldName}"][data-file="${fileId}"]`);
+  if (tdEl) {
+    tdEl.classList.toggle('cell-error', !vr.ok);
+    tdEl.classList.toggle('cell-warn', !!vr.warn);
+    const tip = tdEl.querySelector('.err-tip');
+    if (tip) tip.remove();
+  }
+  updateValBar(fileId);
+  refreshDependents(fileId, fieldName);
+}
+
+function refreshDependents(fileId, fieldName) {
+  GTFS_FILES.forEach(f => {
+    // Only re-validate files that are currently active (visible) to save CPU
+    if (f.id !== activeTab) return;
+    f.fields.forEach(field => {
+      if (field.type === 'ForeignID' && field.foreignFile === fileId && field.foreignField === fieldName) {
+        updateValBar(f.id);
+      }
+    });
+  });
+}
+
+function updateValBar(fileId) {
+  const bar = document.getElementById('val-bar-' + fileId);
+  const fileDef = GTFS_FILES.find(f => f.id === fileId);
+  const rows = state[fileId];
+  let errs = 0, warns = 0;
+  rows.forEach(row => {
+    fileDef.fields.forEach(field => {
+      const vr = validateCell(row[field.name] || '', field, fileId);
+      if (!vr.ok) errs++;
+      else if (vr.warn) warns++;
+    });
+  });
+  const html = `<span>Нийт мөр: <strong>${rows.length}</strong></span>` +
+    (errs ? `<span class="v-err">❌ Алдаа: ${errs}</span>` : '<span class="v-ok">✅ Алдаагүй</span>') +
+    (warns ? `<span class="v-warn">⚠ Анхааруулга: ${warns}</span>` : '');
+  if (bar) bar.innerHTML = html;
+  // Keep bottom bar in sync if this is the active tab
+  if (fileId === activeTab) syncBottomStatus(fileId);
+}
+
+function handleCellKey(e, fileId, ri) {
+  const table = document.getElementById('table-' + fileId);
+  if (!table) return;
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const allInputs = Array.from(table.querySelectorAll('input[type="text"], select'));
+    const idx = allInputs.indexOf(e.target);
+    const next = allInputs[idx + (e.shiftKey ? -1 : 1)];
+    if (next) next.focus();
+  }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    addRow(fileId);
+    setTimeout(() => {
+      const table2 = document.getElementById('table-' + fileId);
+      if (!table2) return;
+      const allInputs = Array.from(table2.querySelectorAll('input[type="text"], select'));
+      const lastRowInputs = allInputs.filter(el => {
+        const row = el.closest('tr');
+        return row && parseInt(row.dataset.row) === state[fileId].length - 1;
+      });
+      if (lastRowInputs[0]) lastRowInputs[0].focus();
+    }, 30);
+  }
+}
+
+function addRow(fileId) {
+  const fileDef = GTFS_FILES.find(f => f.id === fileId);
+  const ri = state[fileId].length;
+  state[fileId].push({});
+
+  const table = document.getElementById('table-' + fileId);
+  if (!table) return renderTable(fileId);
+
+  // Remove "хоосон" placeholder row if present
+  const tbody = table.querySelector('tbody');
+  if (tbody && tbody.querySelector('td[colspan]')) {
+    tbody.innerHTML = '';
+  }
+
+  // Build new TR directly in DOM — no innerHTML re-render, focus preserved
+  const tr = document.createElement('tr');
+  tr.dataset.row = ri;
+
+  const numTd = document.createElement('td');
+  numTd.textContent = ri + 1;
+  tr.appendChild(numTd);
+
+  fileDef.fields.forEach(field => {
+    const val = '';
+    const vr = validateCell(val, field, fileId);
+    const td = document.createElement('td');
+    td.dataset.row = ri;
+    td.dataset.field = field.name;
+    td.dataset.file = fileId;
+    td.style.position = 'relative';
+    if (!vr.ok) td.classList.add('cell-error');
+
+    if (field.enumValues) {
+      const sel = document.createElement('select');
+      field.enumValues.forEach((ev, ei) => {
+        const opt = document.createElement('option');
+        opt.value = ev;
+        opt.textContent = field.enumLabels ? field.enumLabels[ei] : ev;
+        if (ev === val) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', function() { updateCell(fileId, ri, field.name, this.value); });
+      td.appendChild(sel);
+    } else {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = val;
+      const hint = getIdHint(fileId, field.name);
+      inp.placeholder = hint ? `eg. ${hint}` : field.desc;
+      if (field.type === 'Color') { inp.maxLength = 6; inp.placeholder = 'RRGGBB'; inp.style.width = '80px'; }
+      inp.addEventListener('input',  function() { updateCell(fileId, ri, field.name, this.value); });
+      inp.addEventListener('change', function() { updateCell(fileId, ri, field.name, this.value); });
+      // Auto-format lat/lon to 6 decimals on blur
+      if (field.type === 'Latitude' || field.type === 'Longitude') {
+        inp.addEventListener('blur', function() {
+          if (this.value.trim() === '') return;
+          const fmt = formatLatLon(this.value);
+          if (fmt !== this.value) {
+            this.value = fmt;
+            updateCell(fileId, ri, field.name, fmt);
+          }
+        });
+      }
+      inp.addEventListener('keydown', function(e) {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const allInputs = Array.from(table.querySelectorAll('input[type="text"], select'));
+          const idx = allInputs.indexOf(this);
+          const next = allInputs[idx + (e.shiftKey ? -1 : 1)];
+          if (next) next.focus();
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addRow(fileId);
+          setTimeout(() => {
+            const allInputs = Array.from(table.querySelectorAll('input[type="text"], select'));
+            const lastRowInputs = allInputs.filter(el => {
+              const row = el.closest('tr');
+              return row && parseInt(row.dataset.row) === state[fileId].length - 1;
+            });
+            if (lastRowInputs[0]) lastRowInputs[0].focus();
+          }, 30);
+        }
+      });
+      td.appendChild(inp);
+    }
+
+    tr.appendChild(td);
+  });
+
+  // Delete button cell (sticky right)
+  const delTd = document.createElement('td');
+  delTd.style.cssText = 'text-align:center;position:sticky;right:0;background:var(--surface);z-index:5';
+  const delBtn = document.createElement('button');
+  delBtn.textContent = '✕';
+  delBtn.title = 'Мөр устгах';
+  delBtn.style.cssText = 'background:transparent;border:none;color:#555;cursor:pointer;font-size:14px;padding:4px 6px;border-radius:4px;transition:all 0.15s';
+  delBtn.onmouseover = () => { delBtn.style.color = 'var(--danger)'; delBtn.style.background = '#2a0e0e'; };
+  delBtn.onmouseout  = () => { delBtn.style.color = '#555'; delBtn.style.background = 'transparent'; };
+  delBtn.onclick = () => deleteRow(fileId, ri);
+  delTd.appendChild(delBtn);
+  tr.appendChild(delTd);
+
+  tbody.appendChild(tr);
+  updateValBar(fileId);
+
+  // Auto-focus first input of new row
+  const firstInput = tr.querySelector('input, select');
+  if (firstInput) firstInput.focus();
+}
+
+function deleteLastRow(fileId) {
+  if (state[fileId].length === 0) return;
+  state[fileId].pop();
+  renderTable(fileId);
+}
+
+function deleteRow(fileId, ri) {
+  state[fileId].splice(ri, 1);
+
+  const table = document.getElementById('table-' + fileId);
+  if (!table) return renderTable(fileId);
+
+  const tbody = table.querySelector('tbody');
+  if (!tbody) return renderTable(fileId);
+
+  // Remove the specific TR directly
+  const tr = tbody.querySelector(`tr[data-row="${ri}"]`);
+  if (tr) tr.remove();
+
+  // Renumber remaining rows: update data-row attr, # cell, and all cell/input references
+  const rows = tbody.querySelectorAll('tr[data-row]');
+  rows.forEach((row, newIdx) => {
+    const oldIdx = parseInt(row.dataset.row);
+    if (oldIdx === newIdx) return; // already correct
+    row.dataset.row = newIdx;
+    // Update # cell
+    const numCell = row.cells[0];
+    if (numCell) numCell.textContent = newIdx + 1;
+    // Update td data-row attrs
+    row.querySelectorAll('td[data-row]').forEach(td => { td.dataset.row = newIdx; });
+    // Update delete button onclick
+    const delBtn = row.querySelector('td:last-child button');
+    if (delBtn) delBtn.onclick = () => deleteRow(fileId, newIdx);
+    // Update input/select onchange handlers via re-binding
+    row.querySelectorAll('input, select').forEach(el => {
+      const fieldName = el.closest('td') && el.closest('td').dataset.field;
+      if (!fieldName) return;
+      el.onchange = null; el.oninput = null;
+      el.addEventListener('change', function() { updateCell(fileId, newIdx, fieldName, this.value); });
+      el.addEventListener('input',  function() { updateCell(fileId, newIdx, fieldName, this.value); });
+    });
+  });
+
+  // If no rows left, show placeholder
+  if (state[fileId].length === 0) {
+    const fileDef = GTFS_FILES.find(f => f.id === fileId);
+    tbody.innerHTML = `<tr><td colspan="${fileDef.fields.length + 2}" style="text-align:center;padding:20px;color:var(--text2)">+ Мөр нэмэх товч дарна уу</td></tr>`;
+  }
+
+  updateValBar(fileId);
+}
+
+function clearFile(fileId) {
+  showConfirm('Устгах уу?', `${fileId}.txt-ийн бүх өгөгдлийг устгах уу?`, () => {
+    state[fileId] = [];
+    renderTable(fileId);
+    toast('Цэвэрлэгдлээ', 'ok');
+  });
+}
+
+function importCSV(fileId) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.csv,.txt';
+  inp.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const raw = ev.target.result.replace(/^\uFEFF/, ''); // BOM
+      const lines = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+      if (lines.length < 2) return toast('CSV хоосон байна', 'err');
+      const headers = parseCSVLine(lines[0]).map(h => h.trim());
+      const rows = lines.slice(1).map(line => {
+        const vals = parseCSVLine(line);
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = (vals[i] || '').trim(); });
+        return obj;
+      }).filter(r => Object.values(r).some(v => v !== ''));
+      state[fileId] = rows;
+      renderTable(fileId);
+      toast(`${rows.length} мөр оруулагдлаа`, 'ok');
+    };
+    reader.readAsText(file);
+  };
+  inp.click();
+}
+
+// ── EXPORT PANEL ──────────────────────────────────────────────────────────────
+const TRANSIT_APPS = [
+  { name: 'Google Transit', url: 'https://developers.google.com/transit/gtfs/guides/feed-best-practices', icon: '' },
+  { name: 'Apple Maps', url: 'https://transit.apple.com/request', icon: '' },
+  { name: 'Bing Maps', url: 'https://www.bing.com/maps/transit-data', icon: '' },
+  { name: 'Yandex Transport', url: 'https://yandex.com/dev/maps/gtfs/', icon: '' },
+  { name: 'HERE App', url: 'https://developer.here.com/documentation/public-transit/dev_guide/topics/public-transit-feeds.html', icon: '' },
+  { name: 'Moovit App', url: 'https://moovitapp.com/datapartnership/', icon: '' },
+  { name: 'Transit App', url: 'https://transitapp.com/data', icon: '' },
+  { name: 'Citymapper App', url: 'https://citymapper.com/tools/add-a-city/', icon: '' },
+  { name: 'TransitLand App', url: 'https://www.transit.land/feeds', icon: '' },
+];
+
+function buildExportPanel(container) {
+  const panel = document.createElement('div');
+  panel.className = 'panel' + (activeTab === 'export' ? ' active' : '');
+  panel.dataset.panel = 'export';
+  panel.innerHTML = `
+    <div class="export-panel">
+      <div class="export-section">
+        <h3>Export GTFS zip</h3>
+        <div class="export-row">
+          <label>Destination:</label>
+          <input type="text" id="export-folder" value="${exportFolder}" placeholder="./gtfs_exports" oninput="exportFolder=this.value">
+        </div>
+        <p style="font-size:11px;color:var(--text2);margin:8px 0 12px">gtfs_YYYYMMDD_HHMMSS.zip форматаар хадгална. Жишээ: <code style="color:var(--accent)">gtfs_20260623_143022.zip</code></p>
+        <button class="btn success" onclick="exportGTFS()">Download GTFS zip</button>
+      </div>
+
+      <div class="export-section">
+        <h3>GitHub Repo Push</h3>
+        <div class="export-row">
+          <label>GitHub Repo URL:</label>
+          <input type="text" id="github-repo" placeholder="https://github.com/org/gtfs-feed" oninput="githubRepo=this.value">
+        </div>
+        <p style="font-size:11px;color:var(--text2);margin:8px 0 12px">
+          Байгууллагад илгээх хүсэлтэд энэ репо хаягийг GTFS Schedule файлыг татаж авах сервер гэдгийг зааж хавсаргана. 
+          GitHub репо руу push хийхийн тулд GitHub Actions эсвэл API ашиглах шаардлагатай.
+        </p>
+        <button class="btn primary" onclick="pushToGithub()">Save to GitHub Repo</button>
+      </div>
+
+      <div class="export-section">
+        <h3>Шууд илгээх</h3>
+        <div class="export-row">
+          <label>Байгууллагын нэр:</label>
+          <input type="text" id="org-name" placeholder="The City Transport Policy Agency of Ulaanbaatar, Mongolia" style="min-width:300px">
+        </div>
+        <div class="export-row">
+          <label>Холбоо барих имэйл:</label>
+          <input type="text" id="contact-email" placeholder="gtfs@agency.mn" style="min-width:300px">
+        </div>
+        <p style="font-size:11px;color:var(--text2);margin:8px 0 12px">Товч дарахад тухайн үйлчилгээнд GTFS Schedule хүлээж авах хүсэлтийн мэйл бэлтгэгдэнэ.</p>
+        <div class="export-grid" id="app-grid"></div>
+      </div>
+
+      <div class="export-section">
+        <h3>Өгөгдлийн товч тойм</h3>
+        <div id="data-summary" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px"></div>
+      </div>
+    </div>
+  `;
+  container.appendChild(panel);
+
+  // Build app buttons
+  const grid = panel.querySelector('#app-grid');
+  TRANSIT_APPS.forEach(app => {
+    const btn = document.createElement('button');
+    btn.className = 'send-btn';
+    btn.innerHTML = `<span class="sb-name">${app.icon} ${app.name}</span><span class="sb-url">${new URL(app.url).hostname}</span><span class="sb-status" id="status-${app.name.replace(/\s/g,'')}">Бэлэн</span>`;
+    btn.onclick = () => sendToApp(app);
+    grid.appendChild(btn);
+  });
+
+  updateDataSummary(panel);
+}
+
+function updateDataSummary(panel) {
+  const sumDiv = (panel || document).querySelector('#data-summary');
+  if (!sumDiv) return;
+  sumDiv.innerHTML = GTFS_FILES.map(f => {
+    const count = state[f.id].length;
+    const color = count > 0 ? 'var(--success)' : 'var(--text2)';
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px">
+      <div style="font-size:11px;color:var(--text2);font-family:var(--mono)">${f.name}</div>
+      <div style="font-size:22px;font-weight:700;color:${color}">${count}</div>
+      <div style="font-size:10px;color:var(--text2)">мөр</div>
+    </div>`;
+  }).join('');
+}
+
+function getTimestamp() {
+  const now = new Date();
+  return now.getFullYear().toString() +
+    String(now.getMonth()+1).padStart(2,'0') +
+    String(now.getDate()).padStart(2,'0') + '_' +
+    String(now.getHours()).padStart(2,'0') +
+    String(now.getMinutes()).padStart(2,'0') +
+    String(now.getSeconds()).padStart(2,'0');
+}
+
+function importGTFSZip() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = '.zip';
+  inp.onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.name.endsWith('.zip')) return toast('ZIP файл сонгоно уу', 'err');
+
+    toast('zip файлыг задлаж байна...', 'inf');
+    try {
+      const zip = await JSZip.loadAsync(file);
+      let loaded = 0, skipped = 0;
+
+      // Map filename → fileDef
+      const fileMap = {};
+      GTFS_FILES.forEach(f => { fileMap[f.name] = f; });
+
+      const tasks = [];
+      zip.forEach((relPath, zipEntry) => {
+        const fname = relPath.split('/').pop(); // handle sub-folders
+        if (!fileMap[fname]) { skipped++; return; }
+        tasks.push(
+          zipEntry.async('string').then(csv => {
+            const fileDef = fileMap[fname];
+            const lines = csv.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+            if (lines.length < 1) return;
+
+            // Parse CSV header (handle BOM)
+            const headerLine = lines[0].replace(/^\uFEFF/, '');
+            const headers = parseCSVLine(headerLine);
+
+            const rows = lines.slice(1).map(line => {
+              const vals = parseCSVLine(line);
+              const obj = {};
+              headers.forEach((h, i) => { obj[h.trim()] = (vals[i] || '').trim(); });
+              return obj;
+            }).filter(r => Object.values(r).some(v => v !== ''));
+
+            state[fileDef.id] = rows;
+            loaded++;
+          })
+        );
+      });
+
+      await Promise.all(tasks);
+
+      // Re-render all loaded tables
+      GTFS_FILES.forEach(f => { if (state[f.id].length > 0) renderTable(f.id); });
+      updateDataSummary();
+
+      if (loaded === 0) return toast('GTFS файл олдсонгүй. ZIP агуулгыг шалгана уу.', 'err');
+      toast(`zip файл амжилттай ачаалагдлаа.`, 'ok');
+
+      // Switch to first loaded tab
+      const firstLoaded = GTFS_FILES.find(f => state[f.id].length > 0);
+      if (firstLoaded) switchTab(firstLoaded.id);
+
+    } catch (err) {
+      console.error(err);
+      toast('ZIP задлахад алдаа гарлаа: ' + err.message, 'err');
+    }
+  };
+  inp.click();
+}
+
+// RFC 4180 compliant CSV line parser
+function parseCSVLine(line) {
+  const result = [];
+  let cur = '', inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuote) {
+      if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') { inQuote = false; }
+      else { cur += ch; }
+    } else {
+      if (ch === '"') { inQuote = true; }
+      else if (ch === ',') { result.push(cur); cur = ''; }
+      else { cur += ch; }
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function exportGTFS() {
+  let totalRows = 0;
+  GTFS_FILES.forEach(f => { totalRows += state[f.id].length; });
+  if (totalRows === 0) return toast('Өгөгдөл байхгүй байна. Эхлээд мэдээлэл оруулна уу.', 'err');
+
+  // Build CSV content for each file that has data
+  const csvFiles = [];
+  GTFS_FILES.forEach(f => {
+    if (state[f.id].length === 0) return;
+    const headers = f.fields.map(fld => fld.name);
+    const rows = state[f.id].map(r =>
+      headers.map(h => {
+        const v = (r[h] == null ? '' : String(r[h]));
+        // Quote fields that contain comma, newline, or double-quote
+        if (v.includes(',') || v.includes('\n') || v.includes('"')) {
+          return '"' + v.replace(/"/g, '""') + '"';
+        }
+        return v;
+      }).join(',')
+    );
+    const csv = [headers.join(','), ...rows].join('\r\n') + '\r\n';
+    csvFiles.push({ name: f.name, content: csv });
+  });
+
+  // Use JSZip to create a real .zip
+  if (typeof JSZip === 'undefined') {
+    return toast('JSZip ачаалагдаагүй байна. Хуудсыг дахин ачаална уу.', 'err');
+  }
+  const zip = new JSZip();
+  csvFiles.forEach(f => zip.file(f.name, f.content));
+
+  const ts = getTimestamp();
+  const fname = `gtfs_${ts}.zip`;
+
+  zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
+    .then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+      toast(`${fname} файл амжилттай үүслээ`, 'ok');
+      updateDataSummary();
+    });
+}
+
+function pushToGithub() {
+  const repo = document.getElementById('github-repo').value;
+  if (!repo) return toast('GitHub репо хаягаа оруулна уу', 'err');
+  // In a browser we can't push directly; open GitHub with instructions
+  toast('GitHub репо руу push хийхийн тулд GitHub CLI эсвэл Desktop ашиглана уу. Репо нээгдэж байна...', 'inf');
+  setTimeout(() => window.open(repo, '_blank'), 800);
+}
+
+function sendToApp(app) {
+  const orgName = document.getElementById('org-name').value || 'Байгууллагын нэр';
+  const email = document.getElementById('contact-email').value || '';
+  const repo = document.getElementById('github-repo').value || '[GTFS репо хаяг]';
+  const statusEl = document.getElementById('status-' + app.name.replace(/\s/g,''));
+
+  const subject = encodeURIComponent(`GTFS Schedule Feed Request — ${orgName}`);
+  const body = encodeURIComponent(
+    `Dear ${app.name} Team,\n\n` +
+    `We would like to submit our GTFS Schedule feed for integration into ${app.name}.\n\n` +
+    `Organization: ${orgName}\n` +
+    `Contact: ${email}\n` +
+    `GTFS Feed URL: ${repo}/raw/main/gtfs.zip\n\n` +
+    `Our GTFS Schedule feed is maintained at: ${repo}\n` +
+    `The feed follows the official GTFS Schedule specification (https://gtfs.org/documentation/schedule/reference/).\n\n` +
+    `Please let us know the next steps for inclusion.\n\nBest regards,\n${orgName}`
+  );
+
+  if (statusEl) { statusEl.textContent = 'Нээгдэж байна...'; statusEl.className = 'sb-status pending'; }
+
+  // Try mailto first, fall back to app's submission page
+  const mailtoLink = `mailto:?subject=${subject}&body=${body}`;
+  window.open(mailtoLink, '_blank');
+  setTimeout(() => window.open(app.url, '_blank'), 400);
+
+  setTimeout(() => {
+    if (statusEl) { statusEl.textContent = '✓ Нээгдлээ'; statusEl.className = 'sb-status sent'; }
+  }, 1500);
+  toast(`${app.name} руу хүсэлтийн хуудас нээгдлээ`, 'ok');
+}
+
+// ── CONFIRM MODAL ─────────────────────────────────────────────────────────────
+function showConfirm(title, body, onOk) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').textContent = body;
+  const modal = document.getElementById('confirm-modal');
+  modal.classList.add('open');
+  const okBtn = document.getElementById('modal-ok');
+  const cancelBtn = document.getElementById('modal-cancel');
+  const close = () => modal.classList.remove('open');
+  okBtn.onclick = () => { close(); onOk(); };
+  cancelBtn.onclick = close;
+  modal.onclick = e => { if (e.target === modal) close(); };
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'inf') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+// Seed demo data for agency
+state.agency = [{ agency_id: 'ub_public_transport', agency_name: 'UB Public transport policy authority', agency_url: 'https://transport.ub.gov.mn', agency_timezone: 'Asia/Ulaanbaatar', agency_lang: 'mn', agency_phone: '+97670044040', agency_email: 'info_ntbg@ulaanbaatar.mn' }];
+state.stops = [
+  { stop_id: 'S0001', stop_name: 'Сүхбаатарын талбай', stop_lat: '47.918400', stop_lon: '106.917700', location_type: '0' },
+  { stop_id: 'S0002', stop_name: 'Их Тойруу', stop_lat: '47.921000', stop_lon: '106.905000', location_type: '0' },
+  { stop_id: 'S0003', stop_name: 'МУИС', stop_lat: '47.923000', stop_lon: '106.918000', location_type: '0' },
+];
+state.routes = [{ route_id: 'R001', agency_id: 'ub_public_transport', route_short_name: '11', route_long_name: 'Баянзүрх — Хан-Уул', route_type: '3', route_color: '1E88E5', route_text_color: 'FFFFFF' }];
+state.calendar = [{ service_id: 'ubbus', monday: '1', tuesday: '1', wednesday: '1', thursday: '1', friday: '1', saturday: '1', sunday: '1', start_date: '20260101', end_date: '20261231' }];
+state.feed_info = [{ feed_publisher_name: 'UB Public transport policy authority', feed_publisher_url: 'https://transport.ub.gov.mn', feed_lang: 'mn', feed_version: '1.0', feed_start_date: '20260101', feed_end_date: '20261231' }];
+
+buildTabs();
+buildPanels();
+// DOM бэлэн болсны дараа bottom-bar-г идэвхжүүлнэ
+setTimeout(() => updateBottomBar(activeTab), 0);
+</script>
+<div class="bottom-bar" id="bottom-bar">
+  <div class="bb-btns">
+    <button class="btn" id="bb-add-btn" onclick="bbAddRow()">Шинэ мөр нэмэх </button>
+    <button class="btn danger" id="bb-del-btn" onclick="bbDeleteLastRow()">Сүүлийн мөрийг устгах</button>
+  </div>
+  <div class="bb-status" id="bb-status"></div>
+  <span class="bb-copy">2026 © GTFS Schedule Creator</span>
+</div>
+
+</body>
+</html>
