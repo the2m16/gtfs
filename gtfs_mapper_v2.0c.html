@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GTFS Mapper v2.0c</title>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden;background:#111}
+#map{position:absolute;inset:0;z-index:1}
+
+.sidebar{
+  position:absolute;top:0;left:0;width:300px;height:100%;
+  background:#13131f;color:#e0e0f0;
+  display:flex;flex-direction:column;
+  z-index:10;box-shadow:2px 0 12px rgba(0,0,0,.6);
+}
+.sidebar-header{
+  padding:14px 16px 10px;background:#0d0d1a;
+  border-bottom:1px solid #222240;flex-shrink:0;
+}
+.app-title{font-size:.7rem;font-weight:700;letter-spacing:.12em;color:#4444aa;text-transform:uppercase;margin-bottom:10px}
+
+/* File import */
+.import-label{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 12px;border-radius:6px;
+  border:1.5px solid #333360;background:#0d0d1a;
+  color:#6666bb;font-size:.8rem;cursor:pointer;
+  transition:all .2s;
+}
+.import-label:hover{border-color:#6666cc;color:#9999ee;background:#111128}
+.import-label input{display:none}
+.status{font-size:.72rem;color:#44446a;margin-top:6px;min-height:15px;transition:color .2s}
+.status.ok{color:#3daa72}.status.err{color:#cc4444}.status.loading{color:#6666cc}
+
+/* File checklist */
+.file-panel{
+  margin-top:8px;border-radius:6px;border:1px solid #222240;overflow:hidden;display:none;
+}
+.file-row{
+  display:flex;align-items:flex-start;gap:8px;padding:6px 10px;
+  border-bottom:1px solid #1a1a30;cursor:pointer;
+  font-size:.76rem;transition:background .12s;
+}
+.file-row:last-child{border:none}
+.file-row:hover{background:#1a1a2e}
+.file-row input{margin-top:2px;accent-color:#6666cc;flex-shrink:0}
+.file-row.req input{opacity:.4;cursor:not-allowed}
+.fname{font-weight:600;color:#aaaadd;font-family:monospace;font-size:.73rem}
+.fdesc{color:#44446a;font-size:.68rem;margin-top:1px}
+.fbadge{
+  font-size:.6rem;padding:1px 4px;border-radius:3px;margin-left:4px;
+  vertical-align:middle;
+}
+.b-req{background:#0d2a1a;color:#3daa72}
+.b-opt{background:#1a1a0d;color:#aaaa33}
+.b-big{background:#1a0d0d;color:#aa5533}
+
+.load-btn{
+  width:100%;margin-top:8px;padding:8px;border-radius:6px;
+  border:none;background:#3344bb;color:#fff;font-size:.8rem;
+  cursor:pointer;transition:background .15s;
+}
+.load-btn:hover{background:#5566dd}
+.load-btn:disabled{background:#1a1a30;color:#333360;cursor:not-allowed}
+
+/* Section */
+.sec{padding:10px 14px 6px;border-bottom:1px solid #1a1a30;flex-shrink:0}
+.sec-title{font-size:.64rem;font-weight:700;letter-spacing:.1em;color:#44448a;text-transform:uppercase;margin-bottom:8px}
+.type-row{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:.78rem;color:#bbbbdd;cursor:pointer}
+.type-row input{accent-color:#6666cc;transform:scale(1.1);cursor:pointer}
+.vis-row{display:flex;align-items:center;gap:8px;font-size:.78rem;color:#bbbbdd;cursor:pointer}
+.vis-row input{accent-color:#6666cc;transform:scale(1.1)}
+
+/* Route list */
+.search-wrap{padding:8px 14px 4px;flex-shrink:0}
+.search-input{
+  width:100%;padding:7px 10px;border-radius:5px;
+  border:1px solid #222240;background:#0d0d1a;
+  color:#e0e0f0;font-size:.78rem;outline:none;
+  transition:border-color .2s;
+}
+.search-input:focus{border-color:#5555bb}
+.search-input::placeholder{color:#333360}
+.list-header{
+  padding:6px 14px 3px;
+  font-size:.64rem;font-weight:700;letter-spacing:.1em;
+  color:#44448a;text-transform:uppercase;flex-shrink:0;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.list-header span{font-size:.68rem;color:#333360;font-weight:400;text-transform:none;letter-spacing:0}
+.route-list{
+  flex:1;overflow-y:auto;padding:2px 0 10px;
+  scrollbar-width:thin;scrollbar-color:#222240 transparent;
+}
+.route-list::-webkit-scrollbar{width:3px}
+.route-list::-webkit-scrollbar-thumb{background:#222240;border-radius:3px}
+.route-item{
+  display:flex;align-items:center;gap:9px;
+  padding:7px 14px;cursor:pointer;
+  transition:background .12s;font-size:.78rem;
+  border-left:3px solid transparent;
+}
+.route-item:hover{background:#1a1a2e}
+.route-item.sel{background:#111128;border-left-color:var(--c,#6666cc)}
+.rdot{width:10px;height:10px;border-radius:50%;flex-shrink:0;background:var(--c,#6666cc)}
+.rname{flex:1;color:#bbbbdd;line-height:1.3}
+.rshort{font-weight:700;color:#e0e0f0}
+
+/* Detail */
+.detail{
+  position:absolute;bottom:0;left:0;width:300px;
+  background:#0d0d1a;border-top:1px solid #222240;
+  padding:12px 14px;z-index:11;
+  transform:translateY(100%);transition:transform .25s;
+  max-height:45%;overflow-y:auto;
+}
+.detail.open{transform:translateY(0)}
+.detail-back{font-size:.72rem;color:#5555bb;cursor:pointer;margin-bottom:8px;display:inline-flex;align-items:center;gap:4px}
+.detail-back:hover{color:#8888ee}
+.detail-title{font-size:.88rem;font-weight:700;color:#e0e0f0;margin-bottom:3px}
+.detail-sub{font-size:.74rem;color:#6666aa;margin-bottom:8px}
+.detail-note{font-size:.68rem;color:#333360;line-height:1.5;border-top:1px solid #1a1a30;padding-top:8px}
+
+/* Controls */
+.theme-btn{
+  position:absolute;top:10px;right:10px;
+  width:34px;height:34px;border-radius:50%;
+  background:#13131f;border:1px solid #222240;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;z-index:20;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+  outline:none;-webkit-tap-highlight-color:transparent;
+  transition:background .15s;
+}
+.theme-btn:hover{background:#1a1a2e}
+.theme-btn svg{width:17px;height:17px}
+.credit{
+  position:absolute;bottom:6px;left:308px;
+  font-size:.65rem;color:#6666aa;
+  background:rgba(13,13,26,.75);padding:2px 7px;border-radius:3px;
+  z-index:9;pointer-events:none;white-space:nowrap;
+}
+.credit a{color:#5555bb;text-decoration:none}
+
+/* Popup */
+.maplibregl-popup-content{
+  background:#13131f!important;color:#e0e0f0!important;
+  border-radius:7px!important;padding:10px 13px!important;
+  border:1px solid #222240;font-size:.78rem;
+  box-shadow:0 4px 16px rgba(0,0,0,.6)!important;
+}
+.maplibregl-popup-tip{border-top-color:#13131f!important;border-bottom-color:#13131f!important}
+.maplibregl-popup-close-button{color:#5555aa!important;font-size:1rem}
+.maplibregl-popup-close-button:hover{color:#cc4444!important;background:transparent!important}
+.pop-title{font-weight:600;color:#e0e0f0;margin-bottom:3px}
+.pop-sub{font-size:.7rem;color:#6666aa}
+
+#overlay{
+  position:absolute;inset:0;background:rgba(0,0,10,.82);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:100;gap:12px;font-size:.8rem;color:#6666aa;
+}
+#overlay.hidden{display:none}
+.spin{
+  width:32px;height:32px;border:2.5px solid #1a1a30;
+  border-top-color:#5566dd;border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.maplibregl-ctrl-group{
+  background:#13131f!important;border:1px solid #222240!important;border-radius:7px!important;
+}
+.maplibregl-ctrl-group button{background:transparent!important}
+.maplibregl-ctrl-group button span{filter:invert(50%) sepia(30%) saturate(200%) hue-rotate(210deg)}
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <div class="app-title">GTFS Mapper v2.0c on LeafLet raster</div>
+    <label class="import-label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      GTFS .zip импортлох
+      <input type="file" id="file-in" accept=".zip">
+    </label>
+    <div class="status" id="status">Файл сонгоно уу</div>
+
+    <div class="file-panel" id="file-panel">
+      <label class="file-row req">
+        <input type="checkbox" checked disabled>
+        <div><div class="fname">stops.txt <span class="fbadge b-req">Заавал</span></div>
+        <div class="fdesc">Зогсоолын нэр, координат</div></div>
+      </label>
+      <label class="file-row req">
+        <input type="checkbox" checked disabled>
+        <div><div class="fname">routes.txt <span class="fbadge b-req">Заавал</span></div>
+        <div class="fdesc">Маршрутын нэр, өнгө</div></div>
+      </label>
+      <label class="file-row req">
+        <input type="checkbox" checked disabled>
+        <div><div class="fname">trips.txt <span class="fbadge b-req">Заавал</span></div>
+        <div class="fdesc">Маршрут ↔ shape холбоос</div></div>
+      </label>
+      <label class="file-row">
+        <input type="checkbox" checked id="cb-shapes">
+        <div><div class="fname">shapes.txt <span class="fbadge b-opt">Сонголттой</span></div>
+        <div class="fdesc">Замын координатууд</div></div>
+      </label>
+      <label class="file-row">
+        <input type="checkbox" id="cb-stoptimes">
+        <div><div class="fname">stop_times.txt <span class="fbadge b-big">Том файл</span></div>
+        <div class="fdesc">Маршрут ↔ зогсоол, цагийн хуваарь</div></div>
+      </label>
+      <button class="load-btn" id="load-btn" disabled>Файл сонгоно уу</button>
+    </div>
+  </div>
+
+  <div class="sec" id="sec-types" style="display:none">
+    <div class="sec-title">Route Types</div>
+    <div id="type-list"></div>
+  </div>
+
+  <div class="sec" id="sec-vis" style="display:none">
+    <div class="sec-title">Visibility</div>
+    <label class="vis-row">
+      <input type="checkbox" id="hide-stops"> Hide Stops
+    </label>
+  </div>
+
+  <div class="search-wrap" id="search-wrap" style="display:none">
+    <input class="search-input" id="search" placeholder="Чиглэл хайх...">
+  </div>
+  <div class="list-header" id="list-header" style="display:none">
+    Routes <span id="route-count"></span>
+  </div>
+  <div class="route-list" id="route-list"></div>
+</div>
+
+<div class="detail" id="detail">
+  <div class="detail-back" id="detail-back">← Буцах</div>
+  <div class="detail-title" id="detail-title"></div>
+  <div class="detail-sub" id="detail-sub"></div>
+  <div class="detail-note">
+    Дүрслэл нь GTFS feed-ийн өгөгдлөөс шууд үүсгэгдэнэ. Маршрутын зам, зогсоол, өнгө нь routes.txt, trips.txt, stops.txt, shapes.txt файлуудаас ирнэ.
+  </div>
+</div>
+
+<button class="theme-btn" id="theme-btn">
+  <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"></svg>
+</button>
+
+<div class="credit">
+  <a href="https://maplibre.org" target="_blank">MapLibre</a> |
+  © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>
+</div>
+
+<div id="overlay" class="hidden">
+  <div class="spin"></div>
+  <div id="overlay-msg">Боловсруулж байна...</div>
+</div>
+
+<script>
+// ═══════════════════════════
+//  CONSTANTS
+// ═══════════════════════════
+const DARK = {
+  version: 8,                                          // Style JSON-ийн схемийн хувилбар (MapLibre шаарддаг тогтмол утга)
+  sources: {
+    'raster-tiles': {
+      type: 'raster',                                  // Vector биш, бэлэн зураг (PNG tile) ашиглана гэдгийг заана
+      tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+              'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+              'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'],
+      tileSize: 256,                                    // Tile зургийн хэмжээ (пиксель) — CartoDB стандарт хэмжээ
+      attribution: '© OpenStreetMap contributors © CARTO'
+    }
+  },
+  layers: [{
+    id:'raster-tiles', type:'raster', source:'raster-tiles',
+    paint: {
+      'raster-saturation': -0.6,    // -1..1: өнгөний ханалт бууруулж бараг хар цагаан болгоно — давхаргын зураас тод ялгарна
+      'raster-brightness-max': 0.55,// 0..1: хамгийн цайвар цэгийг бүдгэрүүлж, газрын зургийн дэвсгэрийг бараантуулна
+      'raster-contrast': -0.1       // -1..1: контраст бага зэрэг бууруулж нүдэнд зөөлөн болгоно
+    }
+  }]
+};
+const LIGHT = {
+  version: 8,                                          // Style JSON-ийн схемийн хувилбар
+  sources: {
+    'raster-tiles': {
+      type: 'raster',                                  // Bэлэн зураг (PNG tile) эх сурвалж
+      tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+              'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+              'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,                                    // OSM стандарт tile хэмжээ
+      attribution: '© OpenStreetMap contributors'
+    }
+  },
+  layers: [{
+    id:'raster-tiles', type:'raster', source:'raster-tiles',
+    paint: {
+      'raster-saturation': -0.5,    // Өдрийн горимд бага зэрэг бүдгэрүүлж дэвсгэрийг тайван болгоно
+      'raster-brightness-max': 0.85,// Цайвар дэвсгэрийг бага зэрэг бууруулж шар толбо багасгана
+      'raster-contrast': -0.1       // Контраст бага зэрэг бууруулна
+    }
+  }]
+};
+const TYPE_NAMES = {0:'Tram',1:'Subway',2:'Rail',3:'Bus',4:'Ferry',5:'Cable Tram',6:'Aerial Lift',7:'Funicular',11:'Trolleybus',12:'Monorail'};
+
+const EMPTY_FC = {type:'FeatureCollection',features:[]};
+
+// ═══════════════════════════
+//  STATE
+// ═══════════════════════════
+let isDark = true;
+let zip = null;
+let routes = [];       // processed route objects
+let allTypes = [];
+let typeOn = {};       // routeType → bool
+let stopsOn = true;
+let selRoute = null;
+let filterText = '';
+
+// ═══════════════════════════
+//  MAP INIT — layer нэмэх нь map.on('load') доторл хийнэ
+// ═══════════════════════════
+const map = new maplibregl.Map({
+  container:'map', style:DARK,
+  center:[0,30], zoom:2,
+  attributionControl:false
+});
+map.addControl(new maplibregl.NavigationControl(),'bottom-right');
+
+// Map load нэг л удаа — source+layer бэлдэнэ
+map.on('load', () => {
+  // Routes source+layer
+  map.addSource('routes', {type:'geojson', data:EMPTY_FC});
+  map.addLayer({
+    id:'routes-bg', type:'line', source:'routes',
+    filter:['all',['==',['get','vis'],1],['==',['get','act'],0]],
+    paint:{
+      'line-color':['get','color'],
+      'line-width':['interpolate',['linear'],['zoom'],8,0.5,14,1],
+      'line-opacity':0.35
+    }
+  });
+  map.addLayer({
+    id:'routes-sel', type:'line', source:'routes',
+    filter:['all',['==',['get','vis'],1],['==',['get','act'],1]],
+    paint:{
+      'line-color':['get','color'],
+      'line-width':['interpolate',['linear'],['zoom'],8,1,14,2],
+      'line-opacity':0.95
+    }
+  });
+
+  // Stops source+layer
+  map.addSource('stops', {type:'geojson', data:EMPTY_FC});
+  map.addLayer({
+    id:'stops', type:'circle', source:'stops',
+    layout:{visibility:'visible'},
+    paint:{
+      'circle-radius':['interpolate',['linear'],['zoom'],9,0.5,13,2.5,18,5],
+      'circle-color':'#38bdf8',
+      'circle-opacity':0.9
+    }
+  });
+
+  // Stops click popup
+  map.on('click','stops', e=>{
+    const p = e.features[0].properties;
+    new maplibregl.Popup({closeButton:true,maxWidth:'240px'})
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pop-title">${p.name||'Нэргүй'}</div><div class="pop-sub">${p.routes||''}</div>`)
+      .addTo(map);
+  });
+
+  // Routes click popup
+  ['routes-bg','routes-sel'].forEach(lid=>{
+    map.on('click', lid, e=>{
+      const p = e.features[0].properties;
+      new maplibregl.Popup({closeButton:true,maxWidth:'240px'})
+        .setLngLat(e.lngLat)
+        .setHTML(`<div class="pop-title" style="display:flex;align-items:center;gap:7px">
+          <span style="width:11px;height:11px;border-radius:50%;background:${p.color};display:inline-block;flex-shrink:0"></span>Route</div>
+          <div class="pop-sub" style="margin-top:4px">${p.short?'<strong style="color:#e0e0f0">'+p.short+'</strong> · ':''} ${p.longname||''}</div>`)
+        .addTo(map);
+    });
+    map.on('mouseenter',lid,()=>{map.getCanvas().style.cursor='pointer'});
+    map.on('mouseleave',lid,()=>{map.getCanvas().style.cursor=''});
+  });
+  map.on('mouseenter','stops',()=>{map.getCanvas().style.cursor='pointer'});
+  map.on('mouseleave','stops',()=>{map.getCanvas().style.cursor=''});
+
+  // GTFS ачааллагдсан бол шинэчлэх
+  if(routes.length) renderMap();
+});
+
+// Style солигдох үед layer-ууд алга болдог — дахин нэмэх
+map.on('style.load', ()=>{
+  // Давхар нэмэхгүйн тулд шалгана
+  if(map.getSource('routes')) return;
+  // Дахин бүх layer нэмэх
+  map.addSource('routes',{type:'geojson',data:EMPTY_FC});
+  map.addLayer({id:'routes-bg',type:'line',source:'routes',
+    filter:['all',['==',['get','vis'],1],['==',['get','act'],0]],
+    paint:{'line-color':['get','color'],
+      'line-width':['interpolate',['linear'],['zoom'],8,0.5,14,1],'line-opacity':0.35}});
+  map.addLayer({id:'routes-sel',type:'line',source:'routes',
+    filter:['all',['==',['get','vis'],1],['==',['get','act'],1]],
+    paint:{'line-color':['get','color'],
+      'line-width':['interpolate',['linear'],['zoom'],8,1,14,2],'line-opacity':0.95}});
+  map.addSource('stops',{type:'geojson',data:EMPTY_FC});
+  map.addLayer({id:'stops',type:'circle',source:'stops',
+    layout:{visibility:stopsOn?'visible':'none'},
+    paint:{'circle-radius':['interpolate',['linear'],['zoom'],9,0.5,13,2.5,18,5],
+      'circle-color':'#38bdf8','circle-opacity':0.9}});
+
+  map.on('click','stops',e=>{
+    const p=e.features[0].properties;
+    new maplibregl.Popup({closeButton:true,maxWidth:'240px'})
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pop-title">${p.name||'Нэргүй'}</div><div class="pop-sub">${p.routes||''}</div>`)
+      .addTo(map);
+  });
+  ['routes-bg','routes-sel'].forEach(lid=>{
+    map.on('click',lid,e=>{
+      const p=e.features[0].properties;
+      new maplibregl.Popup({closeButton:true,maxWidth:'240px'})
+        .setLngLat(e.lngLat)
+        .setHTML(`<div class="pop-title" style="display:flex;align-items:center;gap:7px">
+          <span style="width:11px;height:11px;border-radius:50%;background:${p.color};display:inline-block;flex-shrink:0"></span>Route</div>
+          <div class="pop-sub" style="margin-top:4px">${p.short?'<strong style="color:#e0e0f0">'+p.short+'</strong> · ':''} ${p.longname||''}</div>`)
+        .addTo(map);
+    });
+    map.on('mouseenter',lid,()=>{map.getCanvas().style.cursor='pointer'});
+    map.on('mouseleave',lid,()=>{map.getCanvas().style.cursor=''});
+  });
+  map.on('mouseenter','stops',()=>{map.getCanvas().style.cursor='pointer'});
+  map.on('mouseleave','stops',()=>{map.getCanvas().style.cursor=''});
+
+  if(routes.length) renderMap();
+});
+
+// ═══════════════════════════
+//  THEME
+// ═══════════════════════════
+const themeBtn = document.getElementById('theme-btn');
+const themeIcon= document.getElementById('theme-icon');
+function setIcon(dark){
+  themeIcon.setAttribute('stroke', dark?'#f59e0b':'#818cf8');
+  themeIcon.innerHTML = dark
+    ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
+    : '<path d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z"/>';
+}
+setIcon(true);
+themeBtn.addEventListener('click',()=>{
+  isDark=!isDark;
+  map.setStyle(isDark?DARK:LIGHT);
+  setIcon(isDark);
+});
+
+// ═══════════════════════════
+//  FILE INPUT
+// ═══════════════════════════
+document.getElementById('file-in').addEventListener('change', async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  setStatus('ZIP задлаж байна...','loading');
+  showOverlay('ZIP задлаж байна...');
+  try {
+    zip = await JSZip.loadAsync(f);
+    hideOverlay();
+
+    // ZIP дотор байгаа файлуудыг шалгах
+    ['shapes.txt','stop_times.txt'].forEach(name=>{
+      const id = name==='shapes.txt'?'cb-shapes':'cb-stoptimes';
+      const cb = document.getElementById(id);
+      const exists = !!zip.file(name);
+      cb.disabled = !exists;
+      if(!exists) cb.checked = false;
+      cb.closest('.file-row').style.opacity = exists?'1':'0.4';
+    });
+
+    const btn = document.getElementById('load-btn');
+    btn.disabled = false;
+    btn.textContent = '▶ Ачаалах';
+    document.getElementById('file-panel').style.display = 'block';
+    setStatus(`ZIP бэлэн — файлуудаа сонгоод ачаална уу`,'');
+  } catch(err){
+    hideOverlay(); zip=null;
+    setStatus('❌ ZIP уншиж чадсангүй','err');
+  }
+});
+
+document.getElementById('load-btn').addEventListener('click', async ()=>{
+  if(!zip) return;
+  const btn = document.getElementById('load-btn');
+  btn.disabled=true; btn.textContent='Ачааллаж байна...';
+  showOverlay('Файлуудыг уншиж байна...');
+
+  try {
+    // ── CSV уншина ──
+    const read = async name => {
+      const f = zip.file(name);
+      return f ? parseCsv(await f.async('string')) : null;
+    };
+
+    setOverlayMsg('stops.txt...');
+    const stops = await read('stops.txt');
+    setOverlayMsg('routes.txt...');
+    const rawRoutes = await read('routes.txt');
+    setOverlayMsg('trips.txt...');
+    const trips = await read('trips.txt');
+
+    let shapes = null, stopTimes = null;
+    if(document.getElementById('cb-shapes').checked){
+      setOverlayMsg('shapes.txt...'); shapes = await read('shapes.txt');
+    }
+    if(document.getElementById('cb-stoptimes').checked){
+      setOverlayMsg('stop_times.txt (том файл)...'); stopTimes = await read('stop_times.txt');
+    }
+
+    if(!stops||!rawRoutes||!trips) throw new Error('stops/routes/trips.txt олдсонгүй');
+
+    setOverlayMsg('Боловсруулж байна...');
+    await tick();
+    process({stops, rawRoutes, trips, shapes, stopTimes});
+    hideOverlay();
+    btn.textContent='✅ Ачааллагдлаа';
+    setStatus(`✅ ${routes.length} маршрут, ${stops.length} зогсоол`,'ok');
+  } catch(err){
+    hideOverlay();
+    setStatus('❌ '+err.message,'err');
+    btn.disabled=false; btn.textContent='▶ Дахин оролдох';
+  }
+});
+
+// ═══════════════════════════
+//  CSV PARSER
+// ═══════════════════════════
+function parseCsv(txt){
+  const lines = txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l=>l.trim());
+  if(lines.length<2) return [];
+  const headers = splitLine(lines[0]);
+  return lines.slice(1).map(l=>{
+    const v=splitLine(l), o={};
+    headers.forEach((h,i)=>{ o[h.trim()]=(v[i]||'').trim(); });
+    return o;
+  });
+}
+function splitLine(l){
+  const r=[]; let cur='',q=false;
+  for(const c of l){
+    if(c==='"'){q=!q}
+    else if(c===','&&!q){r.push(cur);cur=''}
+    else cur+=c;
+  }
+  r.push(cur); return r;
+}
+const tick = ()=>new Promise(r=>setTimeout(r,10));
+
+// ═══════════════════════════
+//  PROCESS GTFS
+// ═══════════════════════════
+function process({stops, rawRoutes, trips, shapes, stopTimes}){
+  // Stop map
+  const stopMap={};
+  stops.forEach(s=>{ stopMap[s.stop_id]=s; });
+
+  // Trip → route, shape
+  const tripRoute={}, tripShape={};
+  trips.forEach(t=>{
+    tripRoute[t.trip_id]=t.route_id;
+    if(t.shape_id) tripShape[t.trip_id]=t.shape_id;
+  });
+
+  // Shape → sorted coords
+  const shapeCoords={};
+  if(shapes){
+    shapes.forEach(s=>{
+      if(!shapeCoords[s.shape_id]) shapeCoords[s.shape_id]=[];
+      shapeCoords[s.shape_id].push([
+        parseFloat(s.shape_pt_lon),
+        parseFloat(s.shape_pt_lat),
+        parseInt(s.shape_pt_sequence)||0
+      ]);
+    });
+    Object.keys(shapeCoords).forEach(id=>{
+      shapeCoords[id].sort((a,b)=>a[2]-b[2]);
+      shapeCoords[id]=shapeCoords[id].map(p=>[p[0],p[1]]);
+    });
+  }
+
+  // Route → shapes
+  const routeShapes={};
+  Object.entries(tripShape).forEach(([tid,sid])=>{
+    const rid=tripRoute[tid]; if(!rid) return;
+    if(!routeShapes[rid]) routeShapes[rid]=new Set();
+    routeShapes[rid].add(sid);
+  });
+
+  // Route → stops (stop_times байвал)
+  const routeStops={};
+  if(stopTimes){
+    stopTimes.forEach(st=>{
+      const rid=tripRoute[st.trip_id]; if(!rid) return;
+      if(!routeStops[rid]) routeStops[rid]=new Set();
+      routeStops[rid].add(st.stop_id);
+    });
+  }
+
+  // Build routes
+  routes = rawRoutes.map(r=>{
+    const color = r.route_color?'#'+r.route_color:'#5566cc';
+    const type  = parseInt(r.route_type)||3;
+    const short = r.route_short_name||'';
+    const longname = r.route_long_name||'';
+    const name  = longname?(short?`${short} - ${longname}`:longname):(short||r.route_id);
+
+    // MultiLineString — shape бүр тусдаа segment
+    const coordLines=[];
+    const sids = routeShapes[r.route_id];
+    if(sids && sids.size>0){
+      sids.forEach(sid=>{
+        const pts=shapeCoords[sid]||[];
+        if(pts.length>1) coordLines.push(pts);
+      });
+    }
+
+    const rStops = stopTimes
+      ? [...(routeStops[r.route_id]||[])].map(id=>stopMap[id]).filter(Boolean)
+      : [];
+
+    return {id:r.route_id, name, short, longname, type, color, coordLines, rStops};
+  }).filter(r=>r.coordLines.length>0||r.rStops.length>0);
+
+  // Types
+  allTypes = [...new Set(routes.map(r=>r.type))].sort((a,b)=>a-b);
+  allTypes.forEach(t=>{ typeOn[t]=true; });
+
+  // Stop → routes cache
+  const stopRouteMap={};
+  if(stopTimes){
+    routes.forEach(r=>{
+      r.rStops.forEach(s=>{
+        if(!stopRouteMap[s.stop_id]) stopRouteMap[s.stop_id]=[];
+        stopRouteMap[s.stop_id].push(r.short||r.id);
+      });
+    });
+  }
+
+  // All stops GeoJSON
+  const stopFeatures = stops.map(s=>{
+    const lon=parseFloat(s.stop_lon), lat=parseFloat(s.stop_lat);
+    if(isNaN(lon)||isNaN(lat)) return null;
+    return {
+      type:'Feature',
+      properties:{name:s.stop_name||'', routes:(stopRouteMap[s.stop_id]||[]).slice(0,8).join(', ')},
+      geometry:{type:'Point', coordinates:[lon,lat]}
+    };
+  }).filter(Boolean);
+
+  // Map update
+  if(map.getSource('stops')) map.getSource('stops').setData({type:'FeatureCollection',features:stopFeatures});
+  renderMap();
+
+  // Fit bounds
+  const lons=stops.map(s=>parseFloat(s.stop_lon)).filter(v=>!isNaN(v));
+  const lats=stops.map(s=>parseFloat(s.stop_lat)).filter(v=>!isNaN(v));
+  if(lons.length){
+    map.fitBounds([[Math.min(...lons),Math.min(...lats)],[Math.max(...lons),Math.max(...lats)]],{padding:40});
+  }
+
+  buildUI();
+}
+
+// ═══════════════════════════
+//  RENDER MAP — зөвхөн setData дуудна
+// ═══════════════════════════
+function renderMap(){
+  if(!map.getSource('routes')) return; // map load дуусаагүй
+
+  const features = routes
+    .filter(r=>r.coordLines.length>0)
+    .map(r=>({
+      type:'Feature',
+      properties:{
+        route_id:r.id, color:r.color,
+        short:r.short, longname:r.longname,
+        vis: typeOn[r.type]?1:0,
+        act: selRoute===r.id?1:0
+      },
+      geometry:{type:'MultiLineString', coordinates:r.coordLines}
+    }));
+
+  map.getSource('routes').setData({type:'FeatureCollection',features});
+}
+
+// ═══════════════════════════
+//  BUILD UI
+// ═══════════════════════════
+function buildUI(){
+  // Types
+  const tl=document.getElementById('type-list');
+  tl.innerHTML='';
+  allTypes.forEach(t=>{
+    const lbl=document.createElement('label');
+    lbl.className='type-row';
+    lbl.innerHTML=`<input type="checkbox" ${typeOn[t]?'checked':''}>
+      <strong>${TYPE_NAMES[t]||'Type '+t}</strong>`;
+    lbl.querySelector('input').addEventListener('change',e=>{
+      typeOn[t]=e.target.checked;
+      renderRouteList();
+      renderMap();
+    });
+    tl.appendChild(lbl);
+  });
+
+  document.getElementById('sec-types').style.display='';
+  document.getElementById('sec-vis').style.display='';
+  document.getElementById('search-wrap').style.display='';
+  document.getElementById('list-header').style.display='';
+
+  document.getElementById('hide-stops').addEventListener('change',e=>{
+    stopsOn=!e.target.checked;
+    if(map.getLayer('stops')) map.setLayoutProperty('stops','visibility',stopsOn?'visible':'none');
+  });
+
+  document.getElementById('search').addEventListener('input',e=>{
+    filterText=e.target.value.toLowerCase().trim();
+    renderRouteList();
+  });
+
+  renderRouteList();
+}
+
+function renderRouteList(){
+  const vis=routes.filter(r=>typeOn[r.type]&&
+    (!filterText||r.name.toLowerCase().includes(filterText)||r.short.toLowerCase().includes(filterText)));
+  document.getElementById('route-count').textContent=vis.length+' routes';
+  const ul=document.getElementById('route-list');
+  ul.innerHTML='';
+  vis.forEach(r=>{
+    const div=document.createElement('div');
+    div.className='route-item'+(selRoute===r.id?' sel':'');
+    div.style.setProperty('--c',r.color);
+    div.innerHTML=`<div class="rdot"></div>
+      <div class="rname">${r.short?`<span class="rshort">${r.short}</span> `:''} ${r.longname||''}</div>`;
+    div.addEventListener('click',()=>toggleRoute(r.id));
+    ul.appendChild(div);
+  });
+}
+
+function toggleRoute(id){
+  const r=routes.find(x=>x.id===id);
+  if(!r) return;
+  if(selRoute===id){
+    selRoute=null;
+    document.getElementById('detail').classList.remove('open');
+  } else {
+    selRoute=id;
+    document.getElementById('detail-title').textContent=r.name;
+    document.getElementById('detail-sub').textContent=
+      `${TYPE_NAMES[r.type]||'Route'} · ${r.rStops.length||'?'} зогсоол`;
+    document.getElementById('detail').classList.add('open');
+    // Fit
+    if(r.coordLines.length>0){
+      const pts=r.coordLines.flat();
+      const lons=pts.map(p=>p[0]),lats=pts.map(p=>p[1]);
+      map.fitBounds([[Math.min(...lons),Math.min(...lats)],[Math.max(...lons),Math.max(...lats)]],{padding:60,maxZoom:15});
+    }
+  }
+  renderRouteList();
+  renderMap();
+}
+
+document.getElementById('detail-back').addEventListener('click',()=>{
+  selRoute=null;
+  document.getElementById('detail').classList.remove('open');
+  renderRouteList();
+  renderMap();
+});
+
+// ═══════════════════════════
+//  HELPERS
+// ═══════════════════════════
+function setStatus(msg,cls){const el=document.getElementById('status');el.textContent=msg;el.className='status '+cls}
+function showOverlay(msg){document.getElementById('overlay').classList.remove('hidden');setOverlayMsg(msg)}
+function hideOverlay(){document.getElementById('overlay').classList.add('hidden')}
+function setOverlayMsg(msg){document.getElementById('overlay-msg').textContent=msg}
+</script>
+</body>
+</html>
